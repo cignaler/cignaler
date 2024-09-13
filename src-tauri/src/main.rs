@@ -24,7 +24,7 @@ fn greet(name: &str) -> String {
 
 #[tauri::command]
 fn get_pipelines() -> Result<Vec<PipelineData>, String> {
-    let client = Gitlab::new("gitlab.com", "glpat-hFFsfxjumhsB9W-nor8Q");
+    let client = Gitlab::new("gitlab.com", "glpat-bCx1RQ8PMtPuj5oA5BVq");
     if client.is_err() {
         let error = client.err().unwrap();
         eprintln!("{}", error.to_string());
