@@ -3,13 +3,18 @@
 
 use ::gitlab::api::Query;
 use gitlab::{api, Gitlab};
+use tauri::tray;
 use std::env::consts::OS;
+use std::fmt::write;
 use std::fs::File;
 use std::time::{SystemTime};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
-use tauri::{CustomMenuItem, SystemTray, SystemTrayMenu, SystemTrayMenuItem};
-
+use tauri::{
+    Manager,
+    menu::{MenuBuilder, MenuItemBuilder},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+};
 use crate::database::database::init_db;
 use crate::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
 
@@ -59,19 +64,54 @@ fn get_pipeline_references() -> Vec<String> {
 }
 
 fn main() {
-    let quit = CustomMenuItem::new("quit".to_string(), "Quit");
-    let hide = CustomMenuItem::new("hide".to_string(), "Hide");
     let init_success = init_db();
     if init_success.is_err() { eprintln!("{}", init_success.err().unwrap()) }
-    let tray_menu = SystemTrayMenu::new()
-        .add_item(quit)
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(hide);
-    let system_tray = SystemTray::new()
-        .with_menu(tray_menu);
     tauri::Builder::default()
-        .system_tray(system_tray)
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![greet, get_pipelines, background_task])
+        .setup(|app| {
+            let toggle = MenuItemBuilder::with_id("toggle", "Toggle").build(app)?;
+            let hide = MenuItemBuilder::with_id("hide", "Hide").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&toggle, &hide, &quit]).build()?;
+            let tray = TrayIconBuilder::new()
+                .menu(&menu)
+                .menu_on_left_click(true)
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "toggle" => {
+                        println!("toggle clicked");
+                    },
+                    "quit" => {
+                        std::process::exit(0)
+                    },
+                    _ => (),
+                })
+                .on_tray_icon_event(|tray, event| match event {
+                    TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                    } => {
+                        println!("left click pressed and released");
+                        let app = tray.app_handle();
+                        if let Some(webview_window) = app.get_webview_window("main") {
+                            let _ = webview_window.show();
+                            let _ = webview_window.set_focus();
+                        }
+                    }
+                    TrayIconEvent::Click {
+                            button: MouseButton::Right,
+                            button_state: MouseButtonState::Up,
+                            ..
+                    } => {
+                        println!("right click pressed");
+                    }
+                    _ => ()
+                })
+                .icon(app.default_window_icon().unwrap().clone())
+                .build(app)?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("error while running tauri application")
 }
