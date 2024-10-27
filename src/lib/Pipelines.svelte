@@ -1,6 +1,6 @@
 <script lang="ts">
     import Pipeline from "./Pipeline.svelte";
-    import {invoke} from "@tauri-apps/api/tauri";
+    import {invoke} from "@tauri-apps/api/core";
     import { Toast } from 'flowbite-svelte';
 
 
