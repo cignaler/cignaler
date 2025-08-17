@@ -17,10 +17,14 @@ pub mod database {
             {},
         )?;
         conn.execute(
-            "create table if not exists listeners (
+            "create table if not exists projects (
              id integer primary key,
              name text not null,
-             color_id integer not null references cat_colors(id)
+             ci_server_name text not null,
+             project_path text not null,
+             default_branch text,
+             enabled boolean default 1,
+             foreign key (ci_server_name) references ci_servers(name)
          )",
             {},
         )?;
@@ -59,5 +63,34 @@ pub mod database {
             .for_each(|x| servers.push(x.unwrap()));
 
         Ok(servers)
+    }
+
+    pub fn save_project_data(
+        name: String,
+        ci_server_name: String,
+        project_path: String,
+        default_branch: Option<String>,
+    ) -> Result<()> {
+        let conn = Connection::open(PATH)?;
+
+        conn.execute(
+            "insert into projects (name, ci_server_name, project_path, default_branch) VALUES (?1, ?2, ?3, ?4)",
+            (&name, &ci_server_name, &project_path, &default_branch),
+        ).inspect_err(|e| println!("failed to store project: {}", e))?;
+
+        conn.close()
+            .inspect_err(|err| println!("DB close failed: {err:#?}"));
+
+        Ok(())
+    }
+
+    pub fn read_projects_data() -> Result<Vec<crate::CiProject>> {
+        let conn = Connection::open(PATH)?;
+        let mut projects = Vec::new();
+        conn.prepare("select id, name, ci_server_name, project_path, default_branch, enabled from projects")?
+            .query_map([], |row| crate::CiProject::from_row(row))?
+            .for_each(|x| projects.push(x.unwrap()));
+
+        Ok(projects)
     }
 }

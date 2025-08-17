@@ -1,18 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use crate::database::database::{init_db, read_ci_servers_data, save_ci_server_data};
+use crate::database::database::{init_db, read_ci_servers_data, save_ci_server_data, save_project_data, read_projects_data};
 use crate::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
-use ::gitlab::api::Query;
-use cignaler::CiServer;
-use gitlab::{api, Gitlab};
-use serde::ser::Error;
-use serde::{Deserialize, Serialize};
-use serde_json::to_string;
-use std::env::consts::OS;
-use std::fmt::write;
-use std::fs::File;
-use std::time::SystemTime;
+use cignaler::{CiServer, CiProject};
 use tauri::tray;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -30,26 +21,32 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-fn get_pipelines() -> Result<Vec<PipelineData>, String> {
-    let client = Gitlab::new("gitlab.com", "glpat-p3rSwf2m2Ux2U4bnEufn");
-    if client.is_err() {
-        let error = client.err().unwrap();
-        eprintln!("{}", error.to_string());
-        return Err(error.to_string());
+fn get_pipelines(
+    ci_server_name: String,
+    project_name: String,
+    reference: String,
+) -> Result<Vec<PipelineData>, String> {
+    println!("Getting pipelines for server: {}, project: {}, ref: {}", ci_server_name, project_name, reference);
+    
+    // Get CI server configuration from database
+    let servers = match read_ci_servers_data() {
+        Ok(servers) => servers,
+        Err(e) => return Err(format!("Failed to read CI servers: {}", e)),
+    };
+
+    let ci_server = servers
+        .iter()
+        .find(|server| server.name == ci_server_name)
+        .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
+
+    // Only support GitLab for now
+    if ci_server.server_type != "gitlab" {
+        return Err(format!("Server type '{}' not supported yet", ci_server.server_type));
     }
 
-    let client = client.unwrap();
-    let data = get_gitlab_pipelines("preview", "flipcorp/flipnext/flip", &client);
-    return Ok(data);
+    get_gitlab_pipelines(&reference, &project_name, ci_server)
 }
 
-#[tauri::command]
-async fn background_task() {
-    loop {
-        File::create("lala.txt").unwrap();
-        std::thread::sleep(std::time::Duration::from_secs(5));
-    }
-}
 
 #[tauri::command]
 fn store_ci_server_data(
@@ -79,17 +76,63 @@ fn read_ci_servers() -> Vec<CiServer> {
 }
 
 #[tauri::command]
-fn get_pipeline_references() -> Vec<String> {
-    println!("get_references");
-    let client = Gitlab::new("gitlab.com", "glpat-ACsoJqTaSSakzcyJnbcz");
-    if client.is_err() {
-        eprintln!("{}", client.err().unwrap());
-        return vec![];
+fn get_pipeline_references(
+    ci_server_name: String,
+    project_name: String,
+) -> Result<Vec<String>, String> {
+    println!("Getting references for server: {}, project: {}", ci_server_name, project_name);
+    
+    // Get CI server configuration from database
+    let servers = match read_ci_servers_data() {
+        Ok(servers) => servers,
+        Err(e) => return Err(format!("Failed to read CI servers: {}", e)),
+    };
+
+    let ci_server = servers
+        .iter()
+        .find(|server| server.name == ci_server_name)
+        .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
+
+    // Only support GitLab for now
+    if ci_server.server_type != "gitlab" {
+        return Err(format!("Server type '{}' not supported yet", ci_server.server_type));
     }
 
-    let client = client.unwrap();
-    let refs = get_references("flipcorp/flipnext/flip", &client);
-    return refs;
+    get_references(&project_name, ci_server)
+}
+
+#[tauri::command]
+fn store_project_data(
+    name: String,
+    ci_server_name: String,
+    project_path: String,
+    default_branch: Option<String>,
+) -> Result<(), String> {
+    println!("Saving project data: name={}, server={}, path={}", name, ci_server_name, project_path);
+    match save_project_data(name, ci_server_name, project_path, default_branch) {
+        Ok(_) => {
+            println!("Project data saved successfully");
+            Ok(())
+        }
+        Err(e) => {
+            println!("Failed to save project data: {}", e);
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+fn read_projects() -> Vec<CiProject> {
+    match read_projects_data() {
+        Ok(data) => {
+            println!("Projects data: {:?}", data);
+            data
+        }
+        Err(e) => {
+            println!("Failed to read projects: {}", e);
+            vec![]
+        }
+    }
 }
 
 fn main() {
@@ -104,7 +147,9 @@ fn main() {
             get_pipelines,
             store_ci_server_data,
             read_ci_servers,
-            background_task
+            get_pipeline_references,
+            store_project_data,
+            read_projects
         ])
         .setup(|app| {
             let toggle = MenuItemBuilder::with_id("toggle", "Toggle").build(app)?;
