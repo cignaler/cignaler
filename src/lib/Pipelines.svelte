@@ -5,13 +5,13 @@
 
 
     interface PipelineInterface {
-        ref: string
-        web_url: string
-        id: number
-        status: string
-        created_at: string,
-        updated_at: string | null,
-        finished_at: string | null,
+        ref: string;
+        web_url: string;
+        id: number;
+        status: string;
+        created_at: string;
+        updated_at: string | null;
+        finished_at: string | null;
     }
     let pipes: PipelineInterface[] = []
 
