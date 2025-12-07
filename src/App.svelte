@@ -23,7 +23,11 @@
   let serverUrl = "";
   let apiToken = "";
   let serverType = "gitlab";
-  
+
+  // Edit mode tracking
+  let isEditMode = false;
+  let originalServerName = "";
+
   // Refresh trigger for CI servers list
   let configRefreshTrigger = 0;
 
@@ -36,6 +40,19 @@
   }
 
   function showModal() {
+    isEditMode = false;
+    clearForm();
+    modalState = true;
+  }
+
+  function handleEdit(event: CustomEvent) {
+    const { name, urlString, secret, serverType: type } = event.detail;
+    serverName = name;
+    serverUrl = urlString;
+    apiToken = secret;
+    serverType = type;
+    originalServerName = name;
+    isEditMode = true;
     modalState = true;
   }
 
@@ -44,6 +61,8 @@
     serverUrl = "";
     apiToken = "";
     serverType = "gitlab";
+    isEditMode = false;
+    originalServerName = "";
   }
 
   async function saveConfig() {
@@ -53,20 +72,30 @@
     }
 
     try {
-      await invoke("store_ci_server_data", {
-        name: serverName.trim(),
-        serverType: serverType,
-        urlString: serverUrl.trim(),
-        apiKey: apiToken.trim(),
-      });
-      
+      if (isEditMode) {
+        await invoke("update_ci_server", {
+          name: originalServerName,
+          serverType: serverType,
+          urlString: serverUrl.trim(),
+          apiKey: apiToken.trim(),
+        });
+        alert("CI server updated successfully!");
+      } else {
+        await invoke("store_ci_server_data", {
+          name: serverName.trim(),
+          serverType: serverType,
+          urlString: serverUrl.trim(),
+          apiKey: apiToken.trim(),
+        });
+        alert("CI server added successfully!");
+      }
+
       modalState = false;
       clearForm();
       configRefreshTrigger += 1; // Trigger refresh of CI servers list
-      alert("CI server added successfully!");
     } catch (error) {
-      console.error("Failed to save CI server:", error);
-      alert("Failed to save CI server: " + error);
+      console.error(`Failed to ${isEditMode ? 'update' : 'save'} CI server:`, error);
+      alert(`Failed to ${isEditMode ? 'update' : 'save'} CI server: ` + error);
     }
   }
 </script>
@@ -108,18 +137,22 @@
     {#if activeTab === "pipelines"}
       <Pipelines />
     {:else if activeTab === "ci_servers"}
-      <Configs refreshTrigger={configRefreshTrigger} />
+      <Configs refreshTrigger={configRefreshTrigger} on:edit={handleEdit} />
     {/if}
-    <Modal title="Add new CI server" bind:open={modalState} autoclose>
+    <Modal title={isEditMode ? "Edit CI server" : "Add new CI server"} bind:open={modalState} autoclose>
       <div class="mb-6">
         <Label for="server-name" class="block mb-2">Server Name *</Label>
-        <Input 
-          type="text" 
-          id="server-name" 
-          placeholder="e.g., My GitLab Server" 
+        <Input
+          type="text"
+          id="server-name"
+          placeholder="e.g., My GitLab Server"
           bind:value={serverName}
+          disabled={isEditMode}
           required
         />
+        {#if isEditMode}
+          <p class="text-xs text-gray-500 mt-1">Server name cannot be changed</p>
+        {/if}
       </div>
       <div class="mb-6">
         <Label for="server-url" class="block mb-2">Server URL *</Label>
@@ -155,8 +188,8 @@
       </div>
 
       <svelte:fragment slot="footer">
-        <Button on:click={saveConfig}>Add Server</Button>
-        <Button color="alternative" on:click={() => modalState = false}>Cancel</Button>
+        <Button on:click={saveConfig}>{isEditMode ? 'Update Server' : 'Add Server'}</Button>
+        <Button color="alternative" on:click={() => { modalState = false; clearForm(); }}>Cancel</Button>
       </svelte:fragment>
     </Modal>
   </div>

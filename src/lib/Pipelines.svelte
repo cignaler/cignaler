@@ -32,10 +32,11 @@
 
     let intervalId: number | null = null;
     let ms = 10000;
+    let loadReferencesTimeout: number | null = null;
 
     async function loadServers() {
         try {
-            const data = await invoke("read_ci_servers") as CiServer[];
+            const data = await invoke<CiServer[]>("read_ci_servers");
             servers = data;
             if (servers.length > 0 && !selectedServer) {
                 selectedServer = servers[0].name;
@@ -43,12 +44,17 @@
         } catch (err) {
             console.error("Failed to load CI servers:", err);
             error = `Failed to load CI servers: ${err}`;
+            servers = [];
         }
     }
 
     async function loadReferences() {
-        if (!selectedServer || !projectName) return;
-        
+        if (!selectedServer || !projectName) {
+            references = [];
+            selectedReference = "";
+            return;
+        }
+
         try {
             const refs = await invoke('get_pipeline_references', {
                 ciServerName: selectedServer,
@@ -61,7 +67,16 @@
         } catch (err) {
             console.error("Failed to load references:", err);
             error = `Failed to load references: ${err}`;
+            references = [];
+            selectedReference = "";
         }
+    }
+
+    function debouncedLoadReferences() {
+        if (loadReferencesTimeout) {
+            clearTimeout(loadReferencesTimeout);
+        }
+        loadReferencesTimeout = setTimeout(loadReferences, 500);
     }
 
     async function get_pipelines() {
@@ -99,10 +114,12 @@
         }
     }
 
-    $: if (selectedServer) {
-        loadReferences();
+    // Load references when server or project changes (debounced)
+    $: if (selectedServer && projectName) {
+        debouncedLoadReferences();
     }
 
+    // Auto-fetch pipelines when all required fields are set
     $: if (selectedServer && projectName && selectedReference) {
         get_pipelines();
         startPolling();
@@ -153,7 +170,10 @@
                 </div>
             </div>
             <div class="mt-4">
-                <Button on:click={get_pipelines} disabled={loading || !selectedServer || !projectName}>
+                <Button
+                    on:click={get_pipelines}
+                    disabled={loading || !selectedServer || !projectName || !selectedReference}
+                >
                     {loading ? 'Loading...' : 'Refresh Pipelines'}
                 </Button>
             </div>

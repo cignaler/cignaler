@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use crate::database::database::{init_db, read_ci_servers_data, save_ci_server_data, save_project_data, read_projects_data};
+use crate::database::database::{init_db, read_ci_servers_data, save_ci_server_data, update_ci_server_data, save_project_data, read_projects_data};
 use crate::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
 use cignaler::{CiServer, CiProject};
 use tauri::tray;
@@ -69,10 +69,37 @@ fn store_ci_server_data(
 }
 
 #[tauri::command]
-fn read_ci_servers() -> Vec<CiServer> {
-    let data = read_ci_servers_data().unwrap();
-    println!("data: {:?}", data);
-    data
+fn read_ci_servers() -> Result<Vec<CiServer>, String> {
+    match read_ci_servers_data() {
+        Ok(data) => {
+            println!("Successfully loaded {} CI servers", data.len());
+            Ok(data)
+        }
+        Err(e) => {
+            println!("Failed to read CI servers: {}", e);
+            Err(format!("Failed to read CI servers: {}", e))
+        }
+    }
+}
+
+#[tauri::command]
+fn update_ci_server(
+    name: String,
+    server_type: String,
+    url_string: String,
+    api_key: String,
+) -> Result<(), String> {
+    println!("Updating CI server: name={}, type={}, url={}", name, server_type, url_string);
+    match update_ci_server_data(name, server_type, url_string, api_key) {
+        Ok(_) => {
+            println!("CI server updated successfully");
+            Ok(())
+        }
+        Err(e) => {
+            println!("Failed to update CI server: {}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
@@ -122,15 +149,15 @@ fn store_project_data(
 }
 
 #[tauri::command]
-fn read_projects() -> Vec<CiProject> {
+fn read_projects() -> Result<Vec<CiProject>, String> {
     match read_projects_data() {
         Ok(data) => {
-            println!("Projects data: {:?}", data);
-            data
+            println!("Successfully loaded {} projects", data.len());
+            Ok(data)
         }
         Err(e) => {
             println!("Failed to read projects: {}", e);
-            vec![]
+            Err(format!("Failed to read projects: {}", e))
         }
     }
 }
@@ -146,6 +173,7 @@ fn main() {
             greet,
             get_pipelines,
             store_ci_server_data,
+            update_ci_server,
             read_ci_servers,
             get_pipeline_references,
             store_project_data,
