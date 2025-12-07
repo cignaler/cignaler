@@ -2,9 +2,11 @@
   import { Toast } from "flowbite-svelte";
   import { invoke } from "@tauri-apps/api/core";
   import Config from "./Config.svelte";
-  import { onMount } from "svelte";
+  import { onMount, createEventDispatcher } from "svelte";
 
   export let refreshTrigger = 0; // Used to trigger refresh from parent
+
+  const dispatch = createEventDispatcher();
 
   interface CiServer {
     name: string;
@@ -21,12 +23,13 @@
     try {
       loading = true;
       error = null;
-      const data = await invoke("read_ci_servers") as CiServer[];
+      const data = await invoke<CiServer[]>("read_ci_servers");
       servers = data;
-      console.log("Loaded CI servers:", JSON.stringify(data));
+      console.log("Loaded CI servers:", servers.length, "servers");
     } catch (err) {
       console.error("Failed to load CI servers:", err);
-      error = err;
+      error = err instanceof Error ? err.message : String(err);
+      servers = [];
     } finally {
       loading = false;
     }
@@ -61,7 +64,13 @@
   {:else}
     {#each servers as server}
       <div class="flex items-center">
-        <Config name={server.name} urlString={server.url_string} secret={server.api_key} />
+        <Config
+          name={server.name}
+          urlString={server.url_string}
+          secret={server.api_key}
+          serverType={server.server_type}
+          on:edit={(e) => dispatch('edit', e.detail)}
+        />
       </div>
     {/each}
   {/if}

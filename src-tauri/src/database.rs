@@ -46,21 +46,46 @@ pub mod database {
         conn.execute(
             "insert into ci_servers (name, server_type, url_string, api_key) VALUES (?1, ?2, ?3, ?4)",
             (&name, &server_type, &url_string, &api_key),
-        ).inspect_err(|e| println!("failed to store: {}", e));
+        )?;
 
-        conn.close()
-            .inspect_err(|err| println!("DB initialization failed: {err:#?}"));
+        if let Err((_, err)) = conn.close() {
+            println!("Warning: Failed to close database connection: {}", err);
+        }
+
+        Ok(())
+    }
+
+    pub fn update_ci_server_data(
+        name: String,
+        server_type: String,
+        url_string: String,
+        api_key: String,
+    ) -> Result<()> {
+        let conn = Connection::open(PATH)?;
+
+        conn.execute(
+            "update ci_servers set server_type = ?1, url_string = ?2, api_key = ?3 where name = ?4",
+            (&server_type, &url_string, &api_key, &name),
+        )?;
+
+        if let Err((_, err)) = conn.close() {
+            println!("Warning: Failed to close database connection: {}", err);
+        }
 
         Ok(())
     }
 
     pub fn read_ci_servers_data() -> Result<Vec<CiServer>> {
         let conn = Connection::open(PATH)?;
-        let mut servers = Vec::new();
-        conn.prepare("select name, server_type, url_string, api_key from ci_servers")
-            .unwrap()
-            .query_map([], |row| CiServer::from_row(row))?
-            .for_each(|x| servers.push(x.unwrap()));
+        let mut stmt = conn.prepare("select name, server_type, url_string, api_key from ci_servers")?;
+        let servers = stmt.query_map([], |row| CiServer::from_row(row))?
+            .collect::<Result<Vec<_>>>()?;
+
+        drop(stmt); // Drop statement before closing connection
+
+        if let Err((_, err)) = conn.close() {
+            println!("Warning: Failed to close database connection: {}", err);
+        }
 
         Ok(servers)
     }
@@ -76,20 +101,26 @@ pub mod database {
         conn.execute(
             "insert into projects (name, ci_server_name, project_path, default_branch) VALUES (?1, ?2, ?3, ?4)",
             (&name, &ci_server_name, &project_path, &default_branch),
-        ).inspect_err(|e| println!("failed to store project: {}", e))?;
+        )?;
 
-        conn.close()
-            .inspect_err(|err| println!("DB close failed: {err:#?}"));
+        if let Err((_, err)) = conn.close() {
+            println!("Warning: Failed to close database connection: {}", err);
+        }
 
         Ok(())
     }
 
     pub fn read_projects_data() -> Result<Vec<crate::CiProject>> {
         let conn = Connection::open(PATH)?;
-        let mut projects = Vec::new();
-        conn.prepare("select id, name, ci_server_name, project_path, default_branch, enabled from projects")?
-            .query_map([], |row| crate::CiProject::from_row(row))?
-            .for_each(|x| projects.push(x.unwrap()));
+        let mut stmt = conn.prepare("select id, name, ci_server_name, project_path, default_branch, enabled from projects")?;
+        let projects = stmt.query_map([], |row| crate::CiProject::from_row(row))?
+            .collect::<Result<Vec<_>>>()?;
+
+        drop(stmt); // Drop statement before closing connection
+
+        if let Err((_, err)) = conn.close() {
+            println!("Warning: Failed to close database connection: {}", err);
+        }
 
         Ok(projects)
     }
