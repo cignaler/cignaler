@@ -1,22 +1,28 @@
 <script lang="ts">
     import { Badge, Button } from 'flowbite-svelte';
-    import { Icon } from 'flowbite-svelte-icons';
+    import { EditOutline } from 'flowbite-svelte-icons';
     import { open } from '@tauri-apps/plugin-shell';
-    import { createEventDispatcher } from 'svelte';
 
-    export let urlString: string;
-    export let name: string;
-    export let secret: string;
-    export let serverType: string = 'gitlab';
-
-    const dispatch = createEventDispatcher();
+    let {
+        urlString,
+        name,
+        secret,
+        serverType = 'gitlab',
+        onedit
+    }: {
+        urlString: string;
+        name: string;
+        secret: string;
+        serverType?: string;
+        onedit?: (detail: { name: string; urlString: string; secret: string; serverType: string }) => void;
+    } = $props();
 
     function gotoWeb() {
         open(urlString)
     }
 
     function handleEdit() {
-        dispatch('edit', {
+        onedit?.({
             name,
             urlString,
             secret,
@@ -46,7 +52,7 @@
         </div>
         <div class="flex flex-col">
             <p class="font-bold text-gray-900">{name}</p>
-            <p on:click={gotoWeb} class="text-sm text-blue-600 hover:underline cursor-pointer">{urlString}</p>
+            <p onclick={gotoWeb} class="text-sm text-blue-600 hover:underline cursor-pointer">{urlString}</p>
         </div>
     </div>
     <div class="flex items-center gap-4">
@@ -56,8 +62,8 @@
         <div class="text-xs text-gray-500 font-mono">
             {maskSecret(secret)}
         </div>
-        <Button size="xs" color="light" on:click={handleEdit}>
-            <Icon name="edit-outline" class="w-4 h-4" />
+        <Button size="xs" color="light" onclick={handleEdit}>
+            <EditOutline class="w-4 h-4" />
         </Button>
     </div>
 </div>
