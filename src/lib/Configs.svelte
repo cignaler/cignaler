@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Toast } from "flowbite-svelte";
+  import Toast from "./components/ui/Toast.svelte";
   import Config from "./Config.svelte";
   import { serversState, loadServers } from "./stores/watchers.svelte";
 

@@ -1,5 +1,7 @@
 <script lang="ts">
-    import {Badge, Card, Checkbox, Indicator} from 'flowbite-svelte';
+    import Badge from './components/ui/Badge.svelte';
+    import Checkbox from './components/ui/Checkbox.svelte';
+    import Indicator from './components/ui/Indicator.svelte';
     import { open } from '@tauri-apps/plugin-shell';
 
     let {
