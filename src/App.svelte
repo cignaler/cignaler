@@ -195,32 +195,52 @@
   }
 </script>
 
-<main>
-  <div class="flex justify-between mt-4 mx-6 mb-4">
-    <div class="flex gap-4">
-      <Button
-        color="primary"
-        outline={activeTab !== "pipelines"}
-        onclick={setPipelinesActive}>Pipelines</Button
-      >
-      <Button
-        color="primary"
-        outline={activeTab !== "ci_servers"}
-        onclick={setConfigActive}>CI Servers</Button
-      >
-    </div>
-    <div class="flex gap-2">
-      <Button color="primary" onclick={showPipelineWatcherModal} class="gap-2">
-        <PullRequestIcon size={5} />
-        <span>Add Watcher</span>
-      </Button>
-      <Button color="primary" onclick={showModal} class="gap-2">
-        <ServerIcon size={5} />
-        <span>Add Server</span>
-      </Button>
+<main class="min-h-screen">
+  <!-- Enhanced Header -->
+  <div class="
+    sticky top-0 z-40
+    bg-white/80 backdrop-blur-lg
+    border-b border-gray-200/60
+    shadow-sm
+  ">
+    <div class="flex justify-between items-center py-5 px-8">
+      <div class="flex items-center gap-6">
+        <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-secondary-600">
+          Cignaler
+        </h1>
+        <div class="flex gap-3">
+          <Button
+            color="primary"
+            outline={activeTab !== "pipelines"}
+            size="md"
+            onclick={setPipelinesActive}
+          >
+            Pipelines
+          </Button>
+          <Button
+            color="primary"
+            outline={activeTab !== "ci_servers"}
+            size="md"
+            onclick={setConfigActive}
+          >
+            CI Servers
+          </Button>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <Button color="primary" onclick={showPipelineWatcherModal} class="gap-2">
+          <PullRequestIcon size={5} />
+          <span>Add Watcher</span>
+        </Button>
+        <Button color="primary" onclick={showModal} class="gap-2">
+          <ServerIcon size={5} />
+          <span>Add Server</span>
+        </Button>
+      </div>
     </div>
   </div>
-  <div class="main-content">
+
+  <div class="main-content px-4 py-6">
     {#if activeTab === "pipelines"}
       <Pipelines />
     {:else if activeTab === "ci_servers"}

@@ -25,10 +25,10 @@
   };
 
   const solidColorClasses = {
-    primary: 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-300 dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800',
-    secondary: 'bg-secondary-600 text-white hover:bg-secondary-700 focus:ring-secondary-300 dark:bg-secondary-600 dark:hover:bg-secondary-700 dark:focus:ring-secondary-800',
-    alternative: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-100 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-700',
-    light: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 focus:ring-gray-200 dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-700'
+    primary: 'bg-gradient-to-r from-primary-600 to-primary-500 text-white hover:from-primary-700 hover:to-primary-600 focus:ring-primary-300 shadow-lg shadow-primary-500/30 hover:shadow-xl hover:shadow-primary-500/40 dark:from-primary-600 dark:to-primary-500 dark:hover:from-primary-700 dark:hover:to-primary-600 dark:focus:ring-primary-800',
+    secondary: 'bg-gradient-to-r from-secondary-600 to-secondary-500 text-white hover:from-secondary-700 hover:to-secondary-600 focus:ring-secondary-300 shadow-lg shadow-secondary-500/30 hover:shadow-xl hover:shadow-secondary-500/40 dark:from-secondary-600 dark:to-secondary-500 dark:hover:from-secondary-700 dark:hover:to-secondary-600 dark:focus:ring-secondary-800',
+    alternative: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-100 shadow-sm hover:shadow-md dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-700',
+    light: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus:ring-gray-200 shadow-sm hover:shadow-md dark:bg-gray-800 dark:text-white dark:border-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-700'
   };
 
   const outlineColorClasses = {
