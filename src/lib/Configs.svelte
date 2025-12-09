@@ -2,6 +2,7 @@
   import Toast from "./components/ui/Toast.svelte";
   import Config from "./Config.svelte";
   import { serversState, loadServers } from "./stores/watchers.svelte";
+  import { fly } from "svelte/transition";
 
   let {
     onedit
@@ -32,8 +33,11 @@
       <p class="text-gray-500">No CI servers configured. Click the + button to add one.</p>
     </div>
   {:else}
-    {#each serversState.servers as server (server.name)}
-      <div class="flex items-center">
+    {#each serversState.servers as server, index (server.name)}
+      <div
+        class="flex items-center"
+        in:fly={{ y: 20, duration: 400, delay: index * 60, opacity: 0 }}
+      >
         <Config
           name={server.name}
           urlString={server.url_string}

@@ -94,21 +94,21 @@
     transition:fade={{ duration: 200 }}
   >
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-gray-900/50 dark:bg-gray-900/80"></div>
+    <div class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm dark:bg-gray-900/80"></div>
 
     <!-- Modal -->
     <div
       bind:this={modalElement}
       use:trapFocus
-      class="relative bg-white rounded-lg shadow dark:bg-gray-700 w-full {sizeClasses[size]} {className}"
+      class="relative bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl dark:bg-gray-700 w-full {sizeClasses[size]} {className} border border-gray-200/50"
       transition:scale={{ duration: 200, start: 0.95 }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
       <!-- Header -->
-      <div class="flex items-start justify-between p-4 border-b rounded-t dark:border-gray-600">
-        <h3 id="modal-title" class="text-xl font-semibold text-gray-900 dark:text-white">
+      <div class="flex items-start justify-between p-6 border-b border-gray-200/60 rounded-t dark:border-gray-600">
+        <h3 id="modal-title" class="text-2xl font-bold text-gray-900 dark:text-white">
           {title}
         </h3>
         <button

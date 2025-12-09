@@ -2,6 +2,7 @@
     import Pipeline from "./Pipeline.svelte";
     import { invoke } from "@tauri-apps/api/core";
     import { watchersState, loadWatchers } from "./stores/watchers.svelte";
+    import { fly } from "svelte/transition";
 
     interface PipelineInterface {
         ref: string;
@@ -80,8 +81,11 @@
             </div>
         {:else}
             <!-- Pipelines List -->
-            {#each pipes as item (item.id)}
-                <div class="flex items-center">
+            {#each pipes as item, index (item.id)}
+                <div
+                    class="flex items-center"
+                    in:fly={{ y: 20, duration: 400, delay: index * 60, opacity: 0 }}
+                >
                     <Pipeline name={item.ref} state={item.status} lastExecuted={item.created_at} webUrl={item.web_url}/>
                 </div>
             {/each}

@@ -17,14 +17,14 @@
   };
 
   const colorClasses = {
-    blue: 'bg-blue-600',
-    red: 'bg-red-600',
-    green: 'bg-green-600',
-    yellow: 'bg-yellow-400',
-    gray: 'bg-gray-400'
+    blue: 'bg-blue-600 shadow-lg shadow-blue-500/40',
+    red: 'bg-red-600 shadow-lg shadow-red-500/40 animate-pulse',
+    green: 'bg-green-600 shadow-lg shadow-green-500/40',
+    yellow: 'bg-yellow-400 shadow-lg shadow-yellow-400/40 animate-pulse',
+    gray: 'bg-gray-400 shadow-sm'
   };
 
-  const baseClasses = 'inline-flex rounded-full';
+  const baseClasses = 'inline-flex rounded-full transition-all duration-300';
   const classes = `${baseClasses} ${sizeClasses[size]} ${colorClasses[color]} ${className}`.trim();
 </script>
 
