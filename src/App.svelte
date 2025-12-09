@@ -227,136 +227,140 @@
       <Configs onedit={handleEdit} />
     {/if}
     <Modal title={isEditMode ? "Edit CI server" : "Add new CI server"} bind:open={modalState} autoclose>
-      <div class="mb-6">
-        <Label for="server-name" class="block mb-2">Server Name *</Label>
-        <Input
-          type="text"
-          id="server-name"
-          placeholder="e.g., My GitLab Server"
-          bind:value={serverName}
-          disabled={isEditMode}
-          required
-        />
-        {#if isEditMode}
-          <p class="text-xs text-gray-500 mt-1">Server name cannot be changed</p>
-        {/if}
-      </div>
-      <div class="mb-6">
-        <Label for="server-url" class="block mb-2">Server URL *</Label>
-        <Input 
-          type="url" 
-          id="server-url" 
-          placeholder="https://gitlab.example.com" 
-          bind:value={serverUrl}
-          required
-        />
-      </div>
-      <div class="mb-6">
-        <Label for="api-token" class="block mb-2">API Token *</Label>
-        <Input 
-          type="password" 
-          id="api-token" 
-          placeholder="glpat-xxxxxxxxxxxxxxxxxxxx" 
-          bind:value={apiToken}
-          required
-        />
-      </div>
-      <div class="mb-6">
-        <Label for="server-type" class="block mb-2">Server Type</Label>
-        <Select id="server-type" bind:value={serverType}>
-          <option value="gitlab">GitLab</option>
-          <option value="github">GitHub</option>
-          <option value="jenkins">Jenkins</option>
-        </Select>
-      </div>
+      {#snippet children()}
+        <div class="mb-6">
+          <Label for="server-name" class="block mb-2">Server Name *</Label>
+          <Input
+            type="text"
+            id="server-name"
+            placeholder="e.g., My GitLab Server"
+            bind:value={serverName}
+            disabled={isEditMode}
+            required
+          />
+          {#if isEditMode}
+            <p class="text-xs text-gray-500 mt-1">Server name cannot be changed</p>
+          {/if}
+        </div>
+        <div class="mb-6">
+          <Label for="server-url" class="block mb-2">Server URL *</Label>
+          <Input
+            type="url"
+            id="server-url"
+            placeholder="https://gitlab.example.com"
+            bind:value={serverUrl}
+            required
+          />
+        </div>
+        <div class="mb-6">
+          <Label for="api-token" class="block mb-2">API Token *</Label>
+          <Input
+            type="password"
+            id="api-token"
+            placeholder="glpat-xxxxxxxxxxxxxxxxxxxx"
+            bind:value={apiToken}
+            required
+          />
+        </div>
+        <div class="mb-6">
+          <Label for="server-type" class="block mb-2">Server Type</Label>
+          <Select id="server-type" bind:value={serverType}>
+            <option value="gitlab">GitLab</option>
+            <option value="github">GitHub</option>
+            <option value="jenkins">Jenkins</option>
+          </Select>
+        </div>
+      {/snippet}
 
-      <svelte:fragment slot="footer">
+      {#snippet footer()}
         <Button color="primary" onclick={saveConfig}>{isEditMode ? 'Update Server' : 'Add Server'}</Button>
         <Button color="alternative" onclick={() => { modalState = false; clearForm(); }}>Cancel</Button>
-      </svelte:fragment>
+      {/snippet}
     </Modal>
 
     <Modal title="Add Pipeline Watcher" bind:open={pipelineWatcherModalState} autoclose>
-      <div class="mb-6">
-        <Label for="watcher-name" class="block mb-2">Watcher Name *</Label>
-        <Input
-          type="text"
-          id="watcher-name"
-          placeholder="e.g., My Project Main Branch"
-          bind:value={watcherName}
-          required
-        />
-      </div>
-
-      <div class="mb-6">
-        <Label for="watcher-ci-server" class="block mb-2">CI Server *</Label>
-        <Select id="watcher-ci-server" bind:value={watcherCiServer}>
-          {#if serversState.servers.length === 0}
-            <option value="">No CI servers available</option>
-          {:else}
-            {#each serversState.servers as server (server.name)}
-              <option value={server.name}>{server.name} ({server.server_type})</option>
-            {/each}
-          {/if}
-        </Select>
-        {#if serversState.servers.length === 0}
-          <p class="text-xs text-red-500 mt-1">Please add a CI server first</p>
-        {/if}
-      </div>
-
-      <div class="mb-6">
-        <Label for="watcher-project-path" class="block mb-2">Project Path *</Label>
-        <Input
-          type="text"
-          id="watcher-project-path"
-          placeholder="e.g., owner/project-name"
-          bind:value={watcherProjectPath}
-          required
-        />
-        <p class="text-xs text-gray-500 mt-1">The project path as it appears in your CI server</p>
-      </div>
-
-      <div class="mb-6">
-        <Label for="watcher-tag" class="block mb-2">Tag/Branch *</Label>
-        <div class="relative">
+      {#snippet children()}
+        <div class="mb-6">
+          <Label for="watcher-name" class="block mb-2">Watcher Name *</Label>
           <Input
             type="text"
-            id="watcher-tag"
-            placeholder={loadingTags ? "Loading tags..." : "Type to search tags..."}
-            bind:value={watcherTag}
-            disabled={loadingTags || !watcherCiServer || !watcherProjectPath.trim()}
-            list="tags-list"
+            id="watcher-name"
+            placeholder="e.g., My Project Main Branch"
+            bind:value={watcherName}
             required
           />
-          {#if !loadingTags && watcherCiServer && watcherProjectPath.trim()}
-            <Button
-              size="xs"
-              color="light"
-              class="absolute right-1 top-1"
-              onclick={loadTags}
-            >
-              Refresh
-            </Button>
+        </div>
+
+        <div class="mb-6">
+          <Label for="watcher-ci-server" class="block mb-2">CI Server *</Label>
+          <Select id="watcher-ci-server" bind:value={watcherCiServer}>
+            {#if serversState.servers.length === 0}
+              <option value="">No CI servers available</option>
+            {:else}
+              {#each serversState.servers as server (server.name)}
+                <option value={server.name}>{server.name} ({server.server_type})</option>
+              {/each}
+            {/if}
+          </Select>
+          {#if serversState.servers.length === 0}
+            <p class="text-xs text-red-500 mt-1">Please add a CI server first</p>
           {/if}
         </div>
-        <datalist id="tags-list">
-          {#each availableTags as tag (tag)}
-            <option value={tag}>{tag}</option>
-          {/each}
-        </datalist>
-        {#if tagsError}
-          <p class="text-xs text-red-500 mt-1">Error loading tags: {tagsError}</p>
-        {:else if availableTags.length > 0}
-          <p class="text-xs text-gray-500 mt-1">{availableTags.length} tags/branches available</p>
-        {:else if !watcherCiServer || !watcherProjectPath.trim()}
-          <p class="text-xs text-gray-500 mt-1">Select a server and enter project path first</p>
-        {/if}
-      </div>
 
-      <svelte:fragment slot="footer">
+        <div class="mb-6">
+          <Label for="watcher-project-path" class="block mb-2">Project Path *</Label>
+          <Input
+            type="text"
+            id="watcher-project-path"
+            placeholder="e.g., owner/project-name"
+            bind:value={watcherProjectPath}
+            required
+          />
+          <p class="text-xs text-gray-500 mt-1">The project path as it appears in your CI server</p>
+        </div>
+
+        <div class="mb-6">
+          <Label for="watcher-tag" class="block mb-2">Tag/Branch *</Label>
+          <div class="relative">
+            <Input
+              type="text"
+              id="watcher-tag"
+              placeholder={loadingTags ? "Loading tags..." : "Type to search tags..."}
+              bind:value={watcherTag}
+              disabled={loadingTags || !watcherCiServer || !watcherProjectPath.trim()}
+              list="tags-list"
+              required
+            />
+            {#if !loadingTags && watcherCiServer && watcherProjectPath.trim()}
+              <Button
+                size="xs"
+                color="light"
+                class="absolute right-1 top-1"
+                onclick={loadTags}
+              >
+                Refresh
+              </Button>
+            {/if}
+          </div>
+          <datalist id="tags-list">
+            {#each availableTags as tag (tag)}
+              <option value={tag}>{tag}</option>
+            {/each}
+          </datalist>
+          {#if tagsError}
+            <p class="text-xs text-red-500 mt-1">Error loading tags: {tagsError}</p>
+          {:else if availableTags.length > 0}
+            <p class="text-xs text-gray-500 mt-1">{availableTags.length} tags/branches available</p>
+          {:else if !watcherCiServer || !watcherProjectPath.trim()}
+            <p class="text-xs text-gray-500 mt-1">Select a server and enter project path first</p>
+          {/if}
+        </div>
+      {/snippet}
+
+      {#snippet footer()}
         <Button color="primary" onclick={savePipelineWatcher} disabled={serversState.servers.length === 0}>Add Watcher</Button>
         <Button color="alternative" onclick={() => { pipelineWatcherModalState = false; clearPipelineWatcherForm(); }}>Cancel</Button>
-      </svelte:fragment>
+      {/snippet}
     </Modal>
   </div>
 </main>
