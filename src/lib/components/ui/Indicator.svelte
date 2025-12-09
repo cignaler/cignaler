@@ -1,0 +1,31 @@
+<script lang="ts">
+  let {
+    color = 'blue',
+    size = 'md',
+    class: className = ''
+  }: {
+    color?: 'blue' | 'red' | 'green' | 'yellow' | 'gray';
+    size?: 'xs' | 'sm' | 'md' | 'lg';
+    class?: string;
+  } = $props();
+
+  const sizeClasses = {
+    xs: 'w-2 h-2',
+    sm: 'w-2.5 h-2.5',
+    md: 'w-3 h-3',
+    lg: 'w-3.5 h-3.5'
+  };
+
+  const colorClasses = {
+    blue: 'bg-blue-600',
+    red: 'bg-red-600',
+    green: 'bg-green-600',
+    yellow: 'bg-yellow-400',
+    gray: 'bg-gray-400'
+  };
+
+  const baseClasses = 'inline-flex rounded-full';
+  const classes = `${baseClasses} ${sizeClasses[size]} ${colorClasses[color]} ${className}`.trim();
+</script>
+
+<span class={classes}></span>

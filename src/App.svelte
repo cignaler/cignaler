@@ -1,15 +1,13 @@
 <script lang="ts">
-  import {
-    Button,
-    SpeedDial,
-    SpeedDialButton,
-    Modal,
-    Label,
-    Input,
-  } from "flowbite-svelte";
+  import Label from "./lib/components/ui/Label.svelte";
+  import Input from "./lib/components/ui/Input.svelte";
+  import Select from "./lib/components/ui/Select.svelte";
+  import Button from "./lib/components/ui/Button.svelte";
+  import Modal from "./lib/components/ui/Modal.svelte";
+  import PullRequestIcon from "./lib/components/icons/PullRequestIcon.svelte";
+  import ServerIcon from "./lib/components/icons/ServerIcon.svelte";
   import Pipelines from "./lib/Pipelines.svelte";
   import Configs from "./lib/Configs.svelte";
-  import { CodePullRequestSolid, UserSettingsSolid } from "flowbite-svelte-icons";
   import { addWatcher, addServer, updateServer, serversState } from "./lib/stores/watchers.svelte";
 
   let tabValue = $state("pipelines");
@@ -199,39 +197,27 @@
 
 <main>
   <div class="flex justify-between mt-4 mx-6 mb-4">
-    <div class="flex basis-1/4">
+    <div class="flex gap-4">
       <Button
+        color="primary"
         outline={activeTab !== "pipelines"}
-        onclick={setPipelinesActive}
-        class="mr-4">Pipelines</Button
+        onclick={setPipelinesActive}>Pipelines</Button
       >
       <Button
+        color="primary"
         outline={activeTab !== "ci_servers"}
-        onclick={setConfigActive}
-        class="w-28">CI Servers</Button
+        onclick={setConfigActive}>CI Servers</Button
       >
     </div>
-    <div class="flex">
-      <SpeedDial
-        class="absolute right-6 top-2"
-        placement="left"
-        tooltip="left"
-      >
-        <SpeedDialButton
-          name="Add new pipeline watcher"
-          tooltip="left"
-          onclick={showPipelineWatcherModal}
-        >
-          <CodePullRequestSolid class="w-5 h-5" />
-        </SpeedDialButton>
-        <SpeedDialButton
-          name="Add new CI server"
-          tooltip="left"
-          onclick={showModal}
-        >
-          <UserSettingsSolid class="w-5 h-5" />
-        </SpeedDialButton>
-      </SpeedDial>
+    <div class="flex gap-2">
+      <Button color="primary" onclick={showPipelineWatcherModal} class="gap-2">
+        <PullRequestIcon size={5} />
+        <span>Add Watcher</span>
+      </Button>
+      <Button color="primary" onclick={showModal} class="gap-2">
+        <ServerIcon size={5} />
+        <span>Add Server</span>
+      </Button>
     </div>
   </div>
   <div class="main-content">
@@ -277,19 +263,15 @@
       </div>
       <div class="mb-6">
         <Label for="server-type" class="block mb-2">Server Type</Label>
-        <select 
-          id="server-type" 
-          bind:value={serverType}
-          class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-        >
+        <Select id="server-type" bind:value={serverType}>
           <option value="gitlab">GitLab</option>
           <option value="github">GitHub</option>
           <option value="jenkins">Jenkins</option>
-        </select>
+        </Select>
       </div>
 
       <svelte:fragment slot="footer">
-        <Button onclick={saveConfig}>{isEditMode ? 'Update Server' : 'Add Server'}</Button>
+        <Button color="primary" onclick={saveConfig}>{isEditMode ? 'Update Server' : 'Add Server'}</Button>
         <Button color="alternative" onclick={() => { modalState = false; clearForm(); }}>Cancel</Button>
       </svelte:fragment>
     </Modal>
@@ -308,11 +290,7 @@
 
       <div class="mb-6">
         <Label for="watcher-ci-server" class="block mb-2">CI Server *</Label>
-        <select
-          id="watcher-ci-server"
-          bind:value={watcherCiServer}
-          class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-        >
+        <Select id="watcher-ci-server" bind:value={watcherCiServer}>
           {#if serversState.servers.length === 0}
             <option value="">No CI servers available</option>
           {:else}
@@ -320,7 +298,7 @@
               <option value={server.name}>{server.name} ({server.server_type})</option>
             {/each}
           {/if}
-        </select>
+        </Select>
         {#if serversState.servers.length === 0}
           <p class="text-xs text-red-500 mt-1">Please add a CI server first</p>
         {/if}
@@ -376,7 +354,7 @@
       </div>
 
       <svelte:fragment slot="footer">
-        <Button onclick={savePipelineWatcher} disabled={serversState.servers.length === 0}>Add Watcher</Button>
+        <Button color="primary" onclick={savePipelineWatcher} disabled={serversState.servers.length === 0}>Add Watcher</Button>
         <Button color="alternative" onclick={() => { pipelineWatcherModalState = false; clearPipelineWatcherForm(); }}>Cancel</Button>
       </svelte:fragment>
     </Modal>

@@ -1,6 +1,7 @@
 <script lang="ts">
-    import { Badge, Button } from 'flowbite-svelte';
-    import { EditOutline } from 'flowbite-svelte-icons';
+    import Badge from './components/ui/Badge.svelte';
+    import Button from './components/ui/Button.svelte';
+    import EditIcon from './components/icons/EditIcon.svelte';
     import { open } from '@tauri-apps/plugin-shell';
 
     let {
@@ -63,7 +64,7 @@
             {maskSecret(secret)}
         </div>
         <Button size="xs" color="light" onclick={handleEdit}>
-            <EditOutline class="w-4 h-4" />
+            <EditIcon class="w-4 h-4" size={4} />
         </Button>
     </div>
 </div>
