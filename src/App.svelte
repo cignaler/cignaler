@@ -10,7 +10,7 @@
   import Pipelines from "./lib/Pipelines.svelte";
   import WatchersSidebar from "./lib/WatchersSidebar.svelte";
   import PreferencesModal from "./lib/PreferencesModal.svelte";
-  import { addWatcher, updateWatcher, deleteWatcher, serversState, watchersState, type ProjectWatcher } from "./lib/stores/watchers.svelte";
+  import { addWatcher, updateWatcher, deleteWatcher, loadWatchers, serversState, watchersState, type ProjectWatcher } from "./lib/stores/watchers.svelte";
   import { toast } from "./lib/stores/toast.svelte";
   import { invoke } from "@tauri-apps/api/core";
 
@@ -34,15 +34,23 @@
   let tagsError = $state("");
   let loadTagsTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
 
+  // Load watchers on app startup
+  $effect(() => {
+    loadWatchers();
+  });
+
   function handleSelectWatcher(id: number) {
     selectedWatcherId = id;
   }
 
   // Auto-select first watcher when available
   $effect(() => {
-    const firstWatcher = watchersState.watchers[0];
-    if (firstWatcher && selectedWatcherId === null) {
-      selectedWatcherId = firstWatcher.id;
+    const watchers = watchersState.watchers;
+    if (watchers.length > 0 && selectedWatcherId === null) {
+      const firstWatcher = watchers[0];
+      if (firstWatcher) {
+        selectedWatcherId = firstWatcher.id;
+      }
     }
   });
 
