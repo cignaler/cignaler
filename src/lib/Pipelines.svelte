@@ -1,7 +1,7 @@
 <script lang="ts">
     import Pipeline from "./Pipeline.svelte";
     import { invoke } from "@tauri-apps/api/core";
-    import { watchersState, loadWatchers } from "./stores/watchers.svelte";
+    import { watchersState } from "./stores/watchers.svelte";
     import { onDestroy } from "svelte";
     import { fade } from "svelte/transition";
 
@@ -81,11 +81,6 @@
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }
 
-    // Load watchers on mount
-    $effect(() => {
-        loadWatchers();
-    });
-
     // Load pipelines when selected watcher changes & set up auto-refresh
     $effect(() => {
         // Clear existing interval
@@ -141,25 +136,21 @@
 </script>
 
 <!-- Header with selected watcher info -->
+{#if selectedWatcher}
 <div class="bg-white border-b border-gray-200 px-8 py-6">
     <div class="flex items-start justify-between">
         <div class="flex-1">
-            {#if selectedWatcher}
-                <div class="flex items-center gap-3 mb-2">
-                    <h1 class="text-2xl font-bold text-gray-900">{selectedWatcher.name}</h1>
-                    {#if selectedWatcher.enabled}
-                        <span class="bg-green-100 text-green-700 text-xs font-medium px-2.5 py-1 rounded">Active</span>
-                    {:else}
-                        <span class="bg-gray-100 text-gray-700 text-xs font-medium px-2.5 py-1 rounded">Idle</span>
-                    {/if}
-                </div>
-                <p class="text-sm text-gray-500">
-                    {selectedWatcher.project_path} @ {selectedWatcher.default_branch || 'default'}
-                </p>
-            {:else}
-                <h1 class="text-2xl font-bold text-gray-900">No Watcher Selected</h1>
-                <p class="text-sm text-gray-500">Select a watcher from the sidebar to view pipelines.</p>
-            {/if}
+            <div class="flex items-center gap-3 mb-2">
+                <h1 class="text-2xl font-bold text-gray-900">{selectedWatcher.name}</h1>
+                {#if selectedWatcher.enabled}
+                    <span class="bg-green-100 text-green-700 text-xs font-medium px-2.5 py-1 rounded">Active</span>
+                {:else}
+                    <span class="bg-gray-100 text-gray-700 text-xs font-medium px-2.5 py-1 rounded">Idle</span>
+                {/if}
+            </div>
+            <p class="text-sm text-gray-500">
+                {selectedWatcher.project_path} @ {selectedWatcher.default_branch || 'default'}
+            </p>
         </div>
         <div class="flex items-center gap-4">
             <div class="flex items-center gap-2 text-sm text-gray-500">
@@ -188,6 +179,7 @@
         </div>
     </div>
 </div>
+{/if}
 
 <!-- Pipelines List -->
 <div class="flex-1 overflow-y-auto bg-gray-50">
@@ -195,9 +187,15 @@
         <div class="flex justify-center py-12">
             <p class="text-sm text-gray-500">Loading pipelines...</p>
         </div>
-    {:else if !selectedWatcher}
-        <div class="flex justify-center py-12" transition:fade={{ duration: 200 }}>
-            <p class="text-sm text-gray-500">Select a watcher to view pipelines</p>
+    {:else if watchersState.watchers.length === 0}
+        <div class="flex flex-col items-center justify-center py-12" transition:fade={{ duration: 200 }}>
+            <div class="mb-4">
+                <svg class="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/>
+                </svg>
+            </div>
+            <p class="text-sm text-gray-500">No watchers yet</p>
+            <p class="text-xs text-gray-400 mt-1">Click "Add New Watcher" in the sidebar to get started</p>
         </div>
     {:else if pipelinesError}
         <div class="flex justify-center py-12" transition:fade={{ duration: 200 }}>

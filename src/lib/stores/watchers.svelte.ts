@@ -19,7 +19,7 @@ interface CiServer {
 // Shared reactive state
 export const watchersState = $state({
     watchers: [] as ProjectWatcher[],
-    loading: false,
+    loading: true,  // Start as true to show loading on first render
     error: null as string | null
 });
 
