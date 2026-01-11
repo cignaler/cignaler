@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest",
+    "test:run": "vitest run",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.17",
+    "jsdom": "^24.0.0",
     "prettier": "^3.6.2",
     "prettier-plugin-svelte": "^3.4.0",
     "prettier-plugin-tailwindcss": "^0.7.1",
@@ -35,6 +38,7 @@
     "tailwindcss": "^4.1.17",
     "tslib": "^2.4.1",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "vitest": "^2.0.0"
   }
 }

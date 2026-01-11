@@ -11,20 +11,6 @@ pub mod models {
     }
 
     impl CiServer {
-        pub fn new(
-            name: String,
-            server_type: String,
-            url_string: String,
-            api_key: String,
-        ) -> CiServer {
-            Self {
-                name,
-                server_type,
-                url_string,
-                api_key,
-            }
-        }
-
         pub fn from_row(row: &Row) -> Result<CiServer> {
             Ok(CiServer {
                 name: row.get(0)?,
@@ -46,24 +32,6 @@ pub mod models {
     }
 
     impl CiProject {
-        pub fn new(
-            id: i64,
-            name: String,
-            ci_server_name: String,
-            project_path: String,
-            default_branch: Option<String>,
-            enabled: bool,
-        ) -> CiProject {
-            Self {
-                id,
-                name,
-                ci_server_name,
-                project_path,
-                default_branch,
-                enabled,
-            }
-        }
-
         pub fn from_row(row: &Row) -> Result<CiProject> {
             Ok(CiProject {
                 id: row.get(0)?,

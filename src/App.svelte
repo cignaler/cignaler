@@ -1,31 +1,28 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import Label from "./lib/components/ui/Label.svelte";
   import Input from "./lib/components/ui/Input.svelte";
   import Select from "./lib/components/ui/Select.svelte";
   import Button from "./lib/components/ui/Button.svelte";
   import Modal from "./lib/components/ui/Modal.svelte";
-  import PullRequestIcon from "./lib/components/icons/PullRequestIcon.svelte";
-  import ServerIcon from "./lib/components/icons/ServerIcon.svelte";
+  import ConfirmDialog from "./lib/components/ui/ConfirmDialog.svelte";
+  import ToastContainer from "./lib/components/ui/ToastContainer.svelte";
   import Pipelines from "./lib/Pipelines.svelte";
-  import Configs from "./lib/Configs.svelte";
-  import { addWatcher, addServer, updateServer, serversState } from "./lib/stores/watchers.svelte";
+  import WatchersSidebar from "./lib/WatchersSidebar.svelte";
+  import PreferencesModal from "./lib/PreferencesModal.svelte";
+  import { addWatcher, updateWatcher, deleteWatcher, serversState, watchersState, type ProjectWatcher } from "./lib/stores/watchers.svelte";
+  import { toast } from "./lib/stores/toast.svelte";
+  import { invoke } from "@tauri-apps/api/core";
 
-  let tabValue = $state("pipelines");
-  let activeTab = $derived(tabValue);
-
-  let modalState = $state(false);
-
+  let selectedWatcherId = $state<number | null>(null);
   let pipelineWatcherModalState = $state(false);
+  let preferencesModalState = $state(false);
+  let editingWatcherId = $state<number | null>(null);
 
-  // Form data for CI server modal
-  let serverName = $state("");
-  let serverUrl = $state("");
-  let apiToken = $state("");
-  let serverType = $state("gitlab");
-
-  // Edit mode tracking
-  let isEditMode = $state(false);
-  let originalServerName = $state("");
+  // Confirm dialog state for watcher deletion
+  let confirmDeleteWatcherOpen = $state(false);
+  let watcherToDelete = $state<ProjectWatcher | null>(null);
+  let deletingWatcherId = $state<number | null>(null);
 
   // Form data for pipeline watcher modal
   let watcherName = $state("");
@@ -37,26 +34,29 @@
   let tagsError = $state("");
   let loadTagsTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
 
-  function setPipelinesActive() {
-    tabValue = "pipelines";
+  function handleSelectWatcher(id: number) {
+    selectedWatcherId = id;
   }
 
-  function setConfigActive() {
-    tabValue = "ci_servers";
-  }
-
-  function showModal() {
-    isEditMode = false;
-    clearForm();
-    modalState = true;
-  }
+  // Auto-select first watcher when available
+  $effect(() => {
+    const firstWatcher = watchersState.watchers[0];
+    if (firstWatcher && selectedWatcherId === null) {
+      selectedWatcherId = firstWatcher.id;
+    }
+  });
 
   function showPipelineWatcherModal() {
     clearPipelineWatcherForm();
-    if (serversState.servers.length > 0) {
-      watcherCiServer = serversState.servers[0].name;
+    const firstServer = serversState.servers[0];
+    if (firstServer) {
+      watcherCiServer = firstServer.name;
     }
     pipelineWatcherModalState = true;
+  }
+
+  function showPreferencesModal() {
+    preferencesModalState = true;
   }
 
   function clearPipelineWatcherForm() {
@@ -67,6 +67,48 @@
     availableTags = [];
     loadingTags = false;
     tagsError = "";
+    editingWatcherId = null;
+  }
+
+  function handleEditWatcher(watcher: ProjectWatcher) {
+    // Set editing state first to prevent auto-load effect from running
+    editingWatcherId = watcher.id;
+    // Pre-fill form with watcher data
+    watcherName = watcher.name;
+    watcherCiServer = watcher.ci_server_name;
+    watcherProjectPath = watcher.project_path;
+    watcherTag = watcher.default_branch || "";
+    availableTags = [];
+    loadingTags = false;
+    tagsError = "";
+    pipelineWatcherModalState = true;
+  }
+
+  function handleDeleteWatcher(watcher: ProjectWatcher) {
+    watcherToDelete = watcher;
+    confirmDeleteWatcherOpen = true;
+  }
+
+  async function confirmDeleteWatcher() {
+    if (!watcherToDelete) return;
+
+    const watcher = watcherToDelete;
+    deletingWatcherId = watcher.id;
+
+    try {
+      await deleteWatcher(watcher.id);
+      // If we deleted the selected watcher, clear selection
+      if (selectedWatcherId === watcher.id) {
+        selectedWatcherId = null;
+      }
+      toast.success(`Watcher "${watcher.name}" deleted successfully`);
+    } catch (error) {
+      console.error("Failed to delete watcher:", error);
+      toast.error("Failed to delete watcher: " + error);
+    } finally {
+      deletingWatcherId = null;
+      watcherToDelete = null;
+    }
   }
 
   async function loadTags() {
@@ -78,13 +120,11 @@
     try {
       loadingTags = true;
       tagsError = "";
-      const { invoke } = await import("@tauri-apps/api/core");
       const refs = await invoke<string[]>("get_pipeline_references", {
         ciServerName: watcherCiServer,
         projectName: watcherProjectPath.trim(),
       });
       availableTags = refs;
-      console.log(`Loaded ${refs.length} tags/branches`);
     } catch (error) {
       console.error("Failed to load tags:", error);
       tagsError = String(error);
@@ -101,70 +141,34 @@
     loadTagsTimeout = setTimeout(loadTags, 800);
   }
 
-  // Auto-load tags when server or project path changes
+  // Cleanup timeout on component destroy
+  onDestroy(() => {
+    if (loadTagsTimeout) {
+      clearTimeout(loadTagsTimeout);
+    }
+  });
+
+  // Auto-load tags when server or project path changes (only when adding new watcher)
   $effect(() => {
-    if (watcherCiServer && watcherProjectPath.trim().length > 0) {
+    // Track these values
+    const server = watcherCiServer;
+    const path = watcherProjectPath;
+    const isOpen = pipelineWatcherModalState;
+    const isEditing = editingWatcherId;
+
+    if (!isOpen || isEditing) return;
+
+    if (server && path.trim().length > 0) {
       debouncedLoadTags();
     } else {
       availableTags = [];
       watcherTag = "";
     }
   });
-
-  function handleEdit(detail: { name: string; urlString: string; secret: string; serverType: string }) {
-    serverName = detail.name;
-    serverUrl = detail.urlString;
-    apiToken = detail.secret;
-    serverType = detail.serverType;
-    originalServerName = detail.name;
-    isEditMode = true;
-    modalState = true;
-  }
-
-  function clearForm() {
-    serverName = "";
-    serverUrl = "";
-    apiToken = "";
-    serverType = "gitlab";
-    isEditMode = false;
-    originalServerName = "";
-  }
-
-  async function saveConfig() {
-    if (!serverName.trim() || !serverUrl.trim() || !apiToken.trim()) {
-      alert("Please fill in all required fields");
-      return;
-    }
-
-    try {
-      if (isEditMode) {
-        await updateServer(
-          originalServerName,
-          serverType,
-          serverUrl.trim(),
-          apiToken.trim()
-        );
-        alert("CI server updated successfully!");
-      } else {
-        await addServer(
-          serverName.trim(),
-          serverType,
-          serverUrl.trim(),
-          apiToken.trim()
-        );
-        alert("CI server added successfully!");
-      }
-
-      modalState = false;
-      clearForm();
-    } catch (error) {
-      console.error(`Failed to ${isEditMode ? 'update' : 'save'} CI server:`, error);
-      alert(`Failed to ${isEditMode ? 'update' : 'save'} CI server: ` + error);
-    }
-  }
-
   async function savePipelineWatcher() {
-    console.log("Saving pipeline watcher:", {
+    const isEditing = editingWatcherId !== null;
+    console.log(`${isEditing ? 'Updating' : 'Saving'} pipeline watcher:`, {
+      id: editingWatcherId,
       name: watcherName,
       ciServer: watcherCiServer,
       projectPath: watcherProjectPath,
@@ -172,133 +176,56 @@
     });
 
     if (!watcherName.trim() || !watcherCiServer || !watcherProjectPath.trim() || !watcherTag.trim()) {
-      alert("Please fill in all required fields including tag");
+      toast.warning("Please fill in all required fields including tag");
       return;
     }
 
     try {
-      await addWatcher(
-        watcherName.trim(),
-        watcherCiServer,
-        watcherProjectPath.trim(),
-        watcherTag.trim()
-      );
+      if (isEditing && editingWatcherId !== null) {
+        await updateWatcher(
+          editingWatcherId,
+          watcherName.trim(),
+          watcherCiServer,
+          watcherProjectPath.trim(),
+          watcherTag.trim()
+        );
+        toast.success("Watcher updated successfully");
+      } else {
+        await addWatcher(
+          watcherName.trim(),
+          watcherCiServer,
+          watcherProjectPath.trim(),
+          watcherTag.trim()
+        );
+        toast.success("Watcher added successfully");
+      }
 
-      console.log("Pipeline watcher saved successfully");
-      alert("Pipeline watcher added successfully!");
       pipelineWatcherModalState = false;
       clearPipelineWatcherForm();
     } catch (error) {
-      console.error("Failed to add pipeline watcher:", error);
-      alert("Failed to add pipeline watcher: " + error);
+      console.error(`Failed to ${isEditing ? 'update' : 'add'} pipeline watcher:`, error);
+      toast.error(`Failed to ${isEditing ? 'update' : 'add'} watcher: ` + error);
     }
   }
 </script>
 
-<main class="min-h-screen">
-  <!-- Enhanced Header -->
-  <div class="
-    sticky top-0 z-40
-    bg-white/80 backdrop-blur-lg
-    border-b border-gray-200/60
-    shadow-sm
-  ">
-    <div class="flex justify-between items-center py-5 px-8">
-      <div class="flex items-center gap-6">
-        <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-secondary-600">
-          Cignaler
-        </h1>
-        <div class="flex gap-3">
-          <Button
-            color="primary"
-            outline={activeTab !== "pipelines"}
-            size="md"
-            onclick={setPipelinesActive}
-          >
-            Pipelines
-          </Button>
-          <Button
-            color="primary"
-            outline={activeTab !== "ci_servers"}
-            size="md"
-            onclick={setConfigActive}
-          >
-            CI Servers
-          </Button>
-        </div>
-      </div>
-      <div class="flex gap-3">
-        <Button color="primary" onclick={showPipelineWatcherModal} class="gap-2">
-          <PullRequestIcon size={5} />
-          <span>Add Watcher</span>
-        </Button>
-        <Button color="primary" onclick={showModal} class="gap-2">
-          <ServerIcon size={5} />
-          <span>Add Server</span>
-        </Button>
-      </div>
-    </div>
+<main class="flex h-screen bg-gray-50">
+  <!-- Sidebar -->
+  <WatchersSidebar
+    onadd={showPipelineWatcherModal}
+    onedit={handleEditWatcher}
+    ondelete={handleDeleteWatcher}
+    selectedWatcherId={selectedWatcherId}
+    onselect={handleSelectWatcher}
+  />
+
+  <!-- Main Content -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <Pipelines selectedWatcherId={selectedWatcherId} onpreferences={showPreferencesModal} />
   </div>
 
-  <div class="main-content px-4 py-6">
-    {#if activeTab === "pipelines"}
-      <Pipelines />
-    {:else if activeTab === "ci_servers"}
-      <Configs onedit={handleEdit} />
-    {/if}
-    <Modal title={isEditMode ? "Edit CI server" : "Add new CI server"} bind:open={modalState} autoclose>
-      {#snippet children()}
-        <div class="mb-6">
-          <Label for="server-name" class="block mb-2">Server Name *</Label>
-          <Input
-            type="text"
-            id="server-name"
-            placeholder="e.g., My GitLab Server"
-            bind:value={serverName}
-            disabled={isEditMode}
-            required
-          />
-          {#if isEditMode}
-            <p class="text-xs text-gray-500 mt-1">Server name cannot be changed</p>
-          {/if}
-        </div>
-        <div class="mb-6">
-          <Label for="server-url" class="block mb-2">Server URL *</Label>
-          <Input
-            type="url"
-            id="server-url"
-            placeholder="https://gitlab.example.com"
-            bind:value={serverUrl}
-            required
-          />
-        </div>
-        <div class="mb-6">
-          <Label for="api-token" class="block mb-2">API Token *</Label>
-          <Input
-            type="password"
-            id="api-token"
-            placeholder="glpat-xxxxxxxxxxxxxxxxxxxx"
-            bind:value={apiToken}
-            required
-          />
-        </div>
-        <div class="mb-6">
-          <Label for="server-type" class="block mb-2">Server Type</Label>
-          <Select id="server-type" bind:value={serverType}>
-            <option value="gitlab">GitLab</option>
-            <option value="github">GitHub</option>
-            <option value="jenkins">Jenkins</option>
-          </Select>
-        </div>
-      {/snippet}
-
-      {#snippet footer()}
-        <Button color="primary" onclick={saveConfig}>{isEditMode ? 'Update Server' : 'Add Server'}</Button>
-        <Button color="alternative" onclick={() => { modalState = false; clearForm(); }}>Cancel</Button>
-      {/snippet}
-    </Modal>
-
-    <Modal title="Add Pipeline Watcher" bind:open={pipelineWatcherModalState} autoclose>
+  <!-- Add/Edit Pipeline Watcher Modal -->
+  <Modal title={editingWatcherId ? "Edit Pipeline Watcher" : "Add Pipeline Watcher"} bind:open={pipelineWatcherModalState} autoclose>
       {#snippet children()}
         <div class="mb-6">
           <Label for="watcher-name" class="block mb-2">Watcher Name *</Label>
@@ -378,9 +305,27 @@
       {/snippet}
 
       {#snippet footer()}
-        <Button color="primary" onclick={savePipelineWatcher} disabled={serversState.servers.length === 0}>Add Watcher</Button>
+        <Button color="primary" onclick={savePipelineWatcher} disabled={serversState.servers.length === 0}>
+          {editingWatcherId ? "Save Changes" : "Add Watcher"}
+        </Button>
         <Button color="alternative" onclick={() => { pipelineWatcherModalState = false; clearPipelineWatcherForm(); }}>Cancel</Button>
       {/snippet}
     </Modal>
-  </div>
+
+  <!-- Preferences Modal -->
+  <PreferencesModal bind:open={preferencesModalState} />
+
+  <!-- Confirm Delete Watcher Dialog -->
+  <ConfirmDialog
+    bind:open={confirmDeleteWatcherOpen}
+    title="Delete Watcher"
+    message={`Are you sure you want to delete the watcher "${watcherToDelete?.name}"?`}
+    confirmText="Delete"
+    variant="danger"
+    loading={deletingWatcherId !== null}
+    onconfirm={confirmDeleteWatcher}
+  />
+
+  <!-- Toast Container -->
+  <ToastContainer />
 </main>

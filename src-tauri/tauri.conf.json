@@ -14,6 +14,11 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "icons/tray-success.png",
+      "icons/tray-failed.png",
+      "icons/tray-pending.png"
     ]
   },
   "productName": "cignaler",
@@ -28,9 +33,9 @@
         "fullscreen": false,
         "resizable": true,
         "title": "cignaler",
-        "width": 800,
-        "height": 600,
-        "closable": false
+        "width": 1400,
+        "height": 800,
+        "closable": true
       }
     ],
     "security": {
