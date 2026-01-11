@@ -1,0 +1,11 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+    test: {
+        include: ['src/**/*.{test,spec}.{js,ts}'],
+        exclude: ['**/node_modules/**', 'src-tauri/**'],
+        environment: 'jsdom',
+        globals: true,
+        setupFiles: ['./src/setupTests.ts']
+    }
+});

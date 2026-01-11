@@ -1,24 +1,20 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use crate::database::database::{init_db, read_ci_servers_data, save_ci_server_data, update_ci_server_data, save_project_data, read_projects_data};
-use crate::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
-use cignaler::{CiServer, CiProject};
-use tauri::tray;
+use cignaler::database::database::{
+    delete_ci_server_data, delete_project_data, init_db, read_ci_servers_data,
+    read_projects_data, save_ci_server_data, save_project_data, update_ci_server_data,
+    update_project_data, update_project_enabled,
+};
+use cignaler::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
+use cignaler::{CiProject, CiServer};
 use tauri::{
+    image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    AppHandle, Manager,
 };
-
-mod database;
-mod gitlab_client;
-
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+use tracing::{debug, error, info};
 
 #[tauri::command]
 fn get_pipelines(
@@ -26,27 +22,27 @@ fn get_pipelines(
     project_name: String,
     reference: String,
 ) -> Result<Vec<PipelineData>, String> {
-    println!("Getting pipelines for server: {}, project: {}, ref: {}", ci_server_name, project_name, reference);
-    
-    // Get CI server configuration from database
-    let servers = match read_ci_servers_data() {
-        Ok(servers) => servers,
-        Err(e) => return Err(format!("Failed to read CI servers: {}", e)),
-    };
+    debug!(
+        "Getting pipelines for server: {}, project: {}, ref: {}",
+        ci_server_name, project_name, reference
+    );
+
+    let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
 
     let ci_server = servers
         .iter()
         .find(|server| server.name == ci_server_name)
         .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
 
-    // Only support GitLab for now
     if ci_server.server_type != "gitlab" {
-        return Err(format!("Server type '{}' not supported yet", ci_server.server_type));
+        return Err(format!(
+            "Server type '{}' not supported yet",
+            ci_server.server_type
+        ));
     }
 
     get_gitlab_pipelines(&reference, &project_name, ci_server)
 }
-
 
 #[tauri::command]
 fn store_ci_server_data(
@@ -55,31 +51,18 @@ fn store_ci_server_data(
     url_string: String,
     api_key: String,
 ) -> Result<(), String> {
-    println!("saving CI server data: name={}, type={}, url={}", name, server_type, url_string);
-    match save_ci_server_data(name, server_type, url_string, api_key) {
-        Ok(_) => {
-            println!("CI server data saved successfully");
-            Ok(())
-        }
-        Err(e) => {
-            println!("Failed to save CI server data: {}", e);
-            Err(e.to_string())
-        }
-    }
+    debug!(
+        "Saving CI server data: name={}, type={}, url={}",
+        name, server_type, url_string
+    );
+    save_ci_server_data(name, server_type, url_string, api_key).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn read_ci_servers() -> Result<Vec<CiServer>, String> {
-    match read_ci_servers_data() {
-        Ok(data) => {
-            println!("Successfully loaded {} CI servers", data.len());
-            Ok(data)
-        }
-        Err(e) => {
-            println!("Failed to read CI servers: {}", e);
-            Err(format!("Failed to read CI servers: {}", e))
-        }
-    }
+    let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
+    debug!("Successfully loaded {} CI servers", servers.len());
+    Ok(servers)
 }
 
 #[tauri::command]
@@ -89,17 +72,17 @@ fn update_ci_server(
     url_string: String,
     api_key: String,
 ) -> Result<(), String> {
-    println!("Updating CI server: name={}, type={}, url={}", name, server_type, url_string);
-    match update_ci_server_data(name, server_type, url_string, api_key) {
-        Ok(_) => {
-            println!("CI server updated successfully");
-            Ok(())
-        }
-        Err(e) => {
-            println!("Failed to update CI server: {}", e);
-            Err(e.to_string())
-        }
-    }
+    debug!(
+        "Updating CI server: name={}, type={}, url={}",
+        name, server_type, url_string
+    );
+    update_ci_server_data(name, server_type, url_string, api_key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_ci_server(name: String) -> Result<(), String> {
+    debug!("Deleting CI server: name={}", name);
+    delete_ci_server_data(name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -107,22 +90,23 @@ fn get_pipeline_references(
     ci_server_name: String,
     project_name: String,
 ) -> Result<Vec<String>, String> {
-    println!("Getting references for server: {}, project: {}", ci_server_name, project_name);
-    
-    // Get CI server configuration from database
-    let servers = match read_ci_servers_data() {
-        Ok(servers) => servers,
-        Err(e) => return Err(format!("Failed to read CI servers: {}", e)),
-    };
+    debug!(
+        "Getting references for server: {}, project: {}",
+        ci_server_name, project_name
+    );
+
+    let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
 
     let ci_server = servers
         .iter()
         .find(|server| server.name == ci_server_name)
         .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
 
-    // Only support GitLab for now
     if ci_server.server_type != "gitlab" {
-        return Err(format!("Server type '{}' not supported yet", ci_server.server_type));
+        return Err(format!(
+            "Server type '{}' not supported yet",
+            ci_server.server_type
+        ));
     }
 
     get_references(&project_name, ci_server)
@@ -135,65 +119,137 @@ fn store_project_data(
     project_path: String,
     default_branch: Option<String>,
 ) -> Result<(), String> {
-    println!("Saving project data: name={}, server={}, path={}", name, ci_server_name, project_path);
-    match save_project_data(name, ci_server_name, project_path, default_branch) {
-        Ok(_) => {
-            println!("Project data saved successfully");
-            Ok(())
-        }
-        Err(e) => {
-            println!("Failed to save project data: {}", e);
-            Err(e.to_string())
-        }
-    }
+    debug!(
+        "Saving project data: name={}, server={}, path={}",
+        name, ci_server_name, project_path
+    );
+    save_project_data(name, ci_server_name, project_path, default_branch).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn read_projects() -> Result<Vec<CiProject>, String> {
-    match read_projects_data() {
-        Ok(data) => {
-            println!("Successfully loaded {} projects", data.len());
-            Ok(data)
-        }
-        Err(e) => {
-            println!("Failed to read projects: {}", e);
-            Err(format!("Failed to read projects: {}", e))
-        }
+    let projects = read_projects_data().map_err(|e| e.to_string())?;
+    debug!("Successfully loaded {} projects", projects.len());
+    Ok(projects)
+}
+
+#[tauri::command]
+fn update_project(
+    id: i64,
+    name: String,
+    ci_server_name: String,
+    project_path: String,
+    default_branch: Option<String>,
+) -> Result<(), String> {
+    debug!(
+        "Updating project: id={}, name={}, server={}, path={}",
+        id, name, ci_server_name, project_path
+    );
+    update_project_data(id, name, ci_server_name, project_path, default_branch)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_project_enabled(id: i64, enabled: bool) -> Result<(), String> {
+    debug!("Setting project enabled: id={}, enabled={}", id, enabled);
+    update_project_enabled(id, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_project(id: i64) -> Result<(), String> {
+    debug!("Deleting project: id={}", id);
+    delete_project_data(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_tray_icon(app: AppHandle, state: String) -> Result<(), String> {
+    debug!("Updating tray icon to state: {}", state);
+
+    let icon_filename = match state.as_str() {
+        "success" => "tray-success.png",
+        "failed" => "tray-failed.png",
+        _ => "tray-pending.png",
+    };
+
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+
+    let icon_path = resource_dir.join("icons").join(icon_filename);
+    debug!("Loading icon from: {:?}", icon_path);
+
+    let icon = Image::from_path(&icon_path)
+        .map_err(|e| format!("Failed to load icon from {:?}: {}", icon_path, e))?;
+
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        tray.set_icon(Some(icon))
+            .map_err(|e| format!("Failed to set tray icon: {}", e))?;
+        debug!("Tray icon updated successfully to: {}", state);
+        Ok(())
+    } else {
+        Err("Tray icon with ID 'main-tray' not found".to_string())
     }
 }
 
 fn main() {
-    let init_success = init_db();
-    if init_success.is_err() {
-        eprintln!("{}", init_success.err().unwrap())
+    // Initialize tracing subscriber for structured logging
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("cignaler=debug".parse().unwrap())
+                .add_directive("r2d2=warn".parse().unwrap()),
+        )
+        .init();
+
+    info!("Starting Cignaler...");
+
+    // Initialize database - exit on failure
+    if let Err(e) = init_db() {
+        error!("Failed to initialize database: {}", e);
+        std::process::exit(1);
     }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_pipelines,
             store_ci_server_data,
             update_ci_server,
+            delete_ci_server,
             read_ci_servers,
             get_pipeline_references,
             store_project_data,
-            read_projects
+            read_projects,
+            update_project,
+            set_project_enabled,
+            delete_project,
+            update_tray_icon
         ])
         .setup(|app| {
-            let toggle = MenuItemBuilder::with_id("toggle", "Toggle").build(app)?;
-            let hide = MenuItemBuilder::with_id("hide", "Hide").build(app)?;
+            let toggle = MenuItemBuilder::with_id("toggle", "Show/Hide").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
-            let menu = MenuBuilder::new(app)
-                .items(&[&toggle, &hide, &quit])
-                .build()?;
-            let tray = TrayIconBuilder::new()
+            let menu = MenuBuilder::new(app).items(&[&toggle, &quit]).build()?;
+
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
-                .menu_on_left_click(true)
+                .menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "toggle" => {
-                        println!("toggle clicked");
+                        debug!("Toggle menu clicked");
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
                     }
-                    "quit" => std::process::exit(0),
+                    "quit" => {
+                        info!("Quit requested from tray menu");
+                        std::process::exit(0);
+                    }
                     _ => (),
                 })
                 .on_tray_icon_event(|tray, event| match event {
@@ -202,7 +258,7 @@ fn main() {
                         button_state: MouseButtonState::Up,
                         ..
                     } => {
-                        println!("left click pressed and released");
+                        debug!("Tray icon left click");
                         let app = tray.app_handle();
                         if let Some(webview_window) = app.get_webview_window("main") {
                             let _ = webview_window.show();
@@ -214,12 +270,27 @@ fn main() {
                         button_state: MouseButtonState::Up,
                         ..
                     } => {
-                        println!("right click pressed");
+                        debug!("Tray icon right click");
                     }
                     _ => (),
                 })
                 .icon(app.default_window_icon().unwrap().clone())
                 .build(app)?;
+
+            // Set up window close handler to minimize to tray instead of closing
+            let main_window = app.get_webview_window("main");
+            if let Some(window) = main_window {
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        debug!("Window close requested - hiding to tray");
+                        api.prevent_close();
+                        let _ = window_clone.hide();
+                    }
+                });
+            }
+
+            info!("Application setup complete");
             Ok(())
         })
         .run(tauri::generate_context!())

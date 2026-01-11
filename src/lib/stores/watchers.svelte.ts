@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-interface ProjectWatcher {
+export interface ProjectWatcher {
     id: number;
     name: string;
     ci_server_name: string;
@@ -115,4 +115,48 @@ export async function updateServer(
 
     // Reload servers to get the updated list
     await loadServers();
+}
+
+// Delete a CI server and refresh state
+export async function deleteServer(name: string) {
+    await invoke("delete_ci_server", { name });
+
+    // Reload servers to get the updated list
+    await loadServers();
+}
+
+// Update a watcher and refresh state
+export async function updateWatcher(
+    id: number,
+    name: string,
+    ciServerName: string,
+    projectPath: string,
+    defaultBranch: string
+) {
+    await invoke("update_project", {
+        id,
+        name,
+        ciServerName,
+        projectPath,
+        defaultBranch
+    });
+
+    // Reload watchers to get the updated list
+    await loadWatchers();
+}
+
+// Delete a watcher and refresh state
+export async function deleteWatcher(id: number) {
+    await invoke("delete_project", { id });
+
+    // Reload watchers to get the updated list
+    await loadWatchers();
+}
+
+// Toggle watcher enabled state
+export async function toggleWatcherEnabled(id: number, enabled: boolean) {
+    await invoke("set_project_enabled", { id, enabled });
+
+    // Reload watchers to get the updated list
+    await loadWatchers();
 }
