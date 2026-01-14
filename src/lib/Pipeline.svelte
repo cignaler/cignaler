@@ -62,7 +62,7 @@
     }
 
     // Commit hash from SHA or extract from ref name
-    let commitHash = $derived(() => {
+    let commitHash = $derived.by(() => {
         if (sha) return sha.substring(0, 7);
         // Fallback: check if ref looks like a SHA
         if (name && name.match(/^[a-f0-9]{40}$/i)) return name.substring(0, 7);
@@ -130,12 +130,12 @@
             </div>
             {/if}
             <!-- Commit Hash -->
-            {#if commitHash()}
+            {#if commitHash}
             <div class="flex items-center gap-1.5">
                 <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
                 </svg>
-                <span class="font-mono">{commitHash()}</span>
+                <span class="font-mono">{commitHash}</span>
             </div>
             {/if}
             <!-- Duration -->

@@ -81,14 +81,18 @@
         </div>
         <div class="flex flex-col gap-1">
             <p class="font-bold text-gray-900 text-lg">{name}</p>
-            <p onclick={gotoWeb} class="
-                text-sm text-secondary-600 hover:text-secondary-700
-                hover:underline cursor-pointer
-                font-medium transition-colors
-                font-mono
-            ">
+            <button
+                type="button"
+                onclick={gotoWeb}
+                class="
+                    text-sm text-secondary-600 hover:text-secondary-700
+                    hover:underline cursor-pointer
+                    font-medium transition-colors
+                    font-mono text-left
+                "
+            >
                 {urlString}
-            </p>
+            </button>
         </div>
     </div>
     <div class="flex items-center gap-4 relative z-10">

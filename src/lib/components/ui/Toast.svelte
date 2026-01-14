@@ -21,8 +21,8 @@
   };
 
   const baseClasses = 'flex items-center w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800';
-  const classes = `${baseClasses} ${className}`.trim();
-  const iconClasses = `inline-flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg ${colorClasses[color]}`;
+  let classes = $derived(`${baseClasses} ${className}`.trim());
+  let iconClasses = $derived(`inline-flex items-center justify-center flex-shrink-0 w-8 h-8 rounded-lg ${colorClasses[color]}`);
 </script>
 
 <div class={classes} role="alert">

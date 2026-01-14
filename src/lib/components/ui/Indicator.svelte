@@ -25,7 +25,7 @@
   };
 
   const baseClasses = 'inline-flex rounded-full transition-all duration-300';
-  const classes = `${baseClasses} ${sizeClasses[size]} ${colorClasses[color]} ${className}`.trim();
+  let classes = $derived(`${baseClasses} ${sizeClasses[size]} ${colorClasses[color]} ${className}`.trim());
 </script>
 
 <span class={classes}></span>

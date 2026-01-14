@@ -15,8 +15,8 @@
     8: 'w-8 h-8'
   };
 
-  const sizeClass = sizeClasses[size] || 'w-5 h-5';
-  const classes = `${sizeClass} ${className}`.trim();
+  let sizeClass = $derived(sizeClasses[size] || 'w-5 h-5');
+  let classes = $derived(`${sizeClass} ${className}`.trim());
 </script>
 
 <svg

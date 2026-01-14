@@ -27,7 +27,7 @@
     xl: 'max-w-xl'
   };
 
-  let modalElement: HTMLDivElement;
+  let modalElement = $state<HTMLDivElement | null>(null);
 
   function handleBackdropClick(event: MouseEvent) {
     if (autoclose && event.target === event.currentTarget) {

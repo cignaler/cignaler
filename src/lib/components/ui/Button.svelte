@@ -39,9 +39,9 @@
   };
 
   const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-4';
-  const disabledClasses = disabled ? 'opacity-50 cursor-not-allowed' : '';
-  const colorClass = outline ? outlineColorClasses[color] : solidColorClasses[color];
-  const classes = `${baseClasses} ${sizeClasses[size]} ${colorClass} ${disabledClasses} ${className}`.trim();
+  let disabledClasses = $derived(disabled ? 'opacity-50 cursor-not-allowed' : '');
+  let colorClass = $derived(outline ? outlineColorClasses[color] : solidColorClasses[color]);
+  let classes = $derived(`${baseClasses} ${sizeClasses[size]} ${colorClass} ${disabledClasses} ${className}`.trim());
 </script>
 
 <button
