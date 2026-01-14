@@ -10,7 +10,7 @@
   } = $props();
 
   const baseClasses = 'block text-sm font-medium text-gray-900 dark:text-white';
-  const classes = `${baseClasses} ${className}`.trim();
+  let classes = $derived(`${baseClasses} ${className}`.trim());
 </script>
 
 <label for={htmlFor} class={classes}>

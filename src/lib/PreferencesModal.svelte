@@ -1,7 +1,7 @@
 <script lang="ts">
   import Label from "./components/ui/Label.svelte";
   import Input from "./components/ui/Input.svelte";
-  import Select from "./components/ui/Select.svelte";
+  import Dropdown from "./components/ui/Dropdown.svelte";
   import Button from "./components/ui/Button.svelte";
   import Modal from "./components/ui/Modal.svelte";
   import ConfirmDialog from "./components/ui/ConfirmDialog.svelte";
@@ -34,9 +34,9 @@
   let serverToDelete = $state<string | null>(null);
 
   const serverTypes = [
-    { value: "gitlab", label: "GitLab", available: true },
-    { value: "github", label: "GitHub Actions", available: false },
-    { value: "jenkins", label: "Jenkins", available: false },
+    { value: "gitlab", label: "GitLab", icon: "🦊", description: "GitLab CI/CD pipelines" },
+    { value: "github", label: "GitHub Actions", icon: "🐙", description: "GitHub Actions workflows", disabled: true },
+    { value: "jenkins", label: "Jenkins", icon: "🔧", description: "Jenkins build pipelines", disabled: true },
   ];
 
   function resetForm() {
@@ -248,16 +248,12 @@
 
           <div>
             <Label for="server-type" class="block mb-2">Server Type *</Label>
-            <Select id="server-type" bind:value={serverType}>
-              {#each serverTypes as type (type.value)}
-                <option value={type.value} disabled={!type.available}>
-                  {type.label}{#if !type.available} (Coming Soon){/if}
-                </option>
-              {/each}
-            </Select>
-            {#if serverType !== "gitlab"}
-              <p class="text-xs text-amber-600 mt-1">This server type is not yet supported</p>
-            {/if}
+            <Dropdown
+              id="server-type"
+              bind:value={serverType}
+              options={serverTypes}
+              placeholder="Select server type"
+            />
           </div>
 
           <div>

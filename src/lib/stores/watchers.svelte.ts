@@ -16,6 +16,11 @@ interface CiServer {
     api_key: string;
 }
 
+interface RefsCache {
+    refs: string[];
+    timestamp: number;
+}
+
 // Shared reactive state
 export const watchersState = $state({
     watchers: [] as ProjectWatcher[],
@@ -28,6 +33,126 @@ export const serversState = $state({
     loading: false,
     error: null as string | null
 });
+
+// Cache for pipeline references (branches/tags)
+// Key format: "serverName:projectPath"
+export const refsCache = $state<Record<string, RefsCache>>({});
+
+// State for tracking loading of refs
+export const refsCacheState = $state({
+    loading: new Set<string>(),
+    errors: {} as Record<string, string>
+});
+
+// Helper to generate cache key
+function getRefsCacheKey(ciServerName: string, projectPath: string): string {
+    return `${ciServerName}:${projectPath}`;
+}
+
+// Get cached refs for a project (returns immediately with cached data if available)
+export function getCachedRefs(ciServerName: string, projectPath: string): string[] {
+    const key = getRefsCacheKey(ciServerName, projectPath);
+    return refsCache[key]?.refs || [];
+}
+
+// Check if refs are currently loading
+export function isRefsLoading(ciServerName: string, projectPath: string): boolean {
+    const key = getRefsCacheKey(ciServerName, projectPath);
+    return refsCacheState.loading.has(key);
+}
+
+// Get error for refs loading
+export function getRefsError(ciServerName: string, projectPath: string): string | undefined {
+    const key = getRefsCacheKey(ciServerName, projectPath);
+    return refsCacheState.errors[key];
+}
+
+// Load refs for a project (with caching)
+// Returns cached data immediately and refreshes in background
+export async function loadRefs(
+    ciServerName: string,
+    projectPath: string,
+    forceRefresh: boolean = false
+): Promise<string[]> {
+    const key = getRefsCacheKey(ciServerName, projectPath);
+    const cached = refsCache[key];
+
+    // If already loading, return cached or empty
+    if (refsCacheState.loading.has(key)) {
+        return cached?.refs || [];
+    }
+
+    // If we have cache and not forcing refresh, return it
+    // But still trigger a background refresh
+    if (cached && !forceRefresh) {
+        // Trigger background refresh (don't await)
+        refreshRefsInBackground(ciServerName, projectPath);
+        return cached.refs;
+    }
+
+    // No cache or force refresh - load synchronously
+    return await fetchRefs(ciServerName, projectPath);
+}
+
+// Fetch refs from server (internal)
+async function fetchRefs(ciServerName: string, projectPath: string): Promise<string[]> {
+    const key = getRefsCacheKey(ciServerName, projectPath);
+
+    // Mark as loading
+    refsCacheState.loading.add(key);
+    delete refsCacheState.errors[key];
+
+    try {
+        const refs = await invoke<string[]>("get_pipeline_references", {
+            ciServerName,
+            projectName: projectPath
+        });
+
+        // Update cache
+        refsCache[key] = {
+            refs,
+            timestamp: Date.now()
+        };
+
+        return refs;
+    } catch (error) {
+        console.error(`Failed to load refs for ${key}:`, error);
+        refsCacheState.errors[key] = String(error);
+        return refsCache[key]?.refs || [];
+    } finally {
+        refsCacheState.loading.delete(key);
+    }
+}
+
+// Refresh refs in background (non-blocking)
+export function refreshRefsInBackground(ciServerName: string, projectPath: string): void {
+    const key = getRefsCacheKey(ciServerName, projectPath);
+
+    // Don't refresh if already loading
+    if (refsCacheState.loading.has(key)) {
+        return;
+    }
+
+    // Fire and forget
+    fetchRefs(ciServerName, projectPath).catch(console.error);
+}
+
+// Clear refs cache for a specific project
+export function clearRefsCache(ciServerName: string, projectPath: string): void {
+    const key = getRefsCacheKey(ciServerName, projectPath);
+    delete refsCache[key];
+    delete refsCacheState.errors[key];
+}
+
+// Clear all refs cache
+export function clearAllRefsCache(): void {
+    for (const key of Object.keys(refsCache)) {
+        delete refsCache[key];
+    }
+    for (const key of Object.keys(refsCacheState.errors)) {
+        delete refsCacheState.errors[key];
+    }
+}
 
 // Load watchers from database
 export async function loadWatchers() {

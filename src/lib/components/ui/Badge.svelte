@@ -20,8 +20,8 @@
   };
 
   const baseClasses = 'inline-flex items-center font-medium px-2.5 py-0.5 text-xs transition-all duration-200';
-  const roundedClass = rounded ? 'rounded-full' : 'rounded-md';
-  const classes = `${baseClasses} ${roundedClass} ${colorClasses[color]} ${className}`.trim();
+  let roundedClass = $derived(rounded ? 'rounded-full' : 'rounded-md');
+  let classes = $derived(`${baseClasses} ${roundedClass} ${colorClasses[color]} ${className}`.trim());
 </script>
 
 <span class={classes}>
