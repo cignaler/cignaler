@@ -72,6 +72,17 @@ pub mod database {
                 [],
             )?;
 
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS cached_pipelines (
+                    project_id INTEGER PRIMARY KEY,
+                    pipelines_json TEXT NOT NULL,
+                    last_updated TEXT NOT NULL,
+                    error TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )",
+                [],
+            )?;
+
             // Run migrations
             migrate_db(&conn)?;
         }
@@ -256,5 +267,84 @@ pub mod database {
 
         info!("Project id={} deleted successfully", id);
         Ok(())
+    }
+
+    #[derive(Debug)]
+    pub struct CachedPipelineRow {
+        pub project_id: i64,
+        pub pipelines_json: String,
+        pub last_updated: String,
+        pub error: Option<String>,
+    }
+
+    pub fn save_cached_pipelines(
+        project_id: i64,
+        pipelines_json: &str,
+        last_updated: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Saving cached pipelines for project_id={}", project_id);
+
+        conn.execute(
+            "INSERT INTO cached_pipelines (project_id, pipelines_json, last_updated, error)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(project_id) DO UPDATE SET
+                pipelines_json = COALESCE(?2, cached_pipelines.pipelines_json),
+                last_updated = ?3,
+                error = ?4",
+            rusqlite::params![project_id, pipelines_json, last_updated, error],
+        )?;
+
+        debug!("Cached pipelines saved for project_id={}", project_id);
+        Ok(())
+    }
+
+    pub fn save_cached_pipelines_error(
+        project_id: i64,
+        last_updated: &str,
+        error: &str,
+    ) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Saving pipeline error for project_id={}: {}", project_id, error);
+
+        // If a row exists, only update error and timestamp, preserving pipelines_json
+        let updated = conn.execute(
+            "UPDATE cached_pipelines SET last_updated = ?1, error = ?2 WHERE project_id = ?3",
+            rusqlite::params![last_updated, error, project_id],
+        )?;
+
+        if updated == 0 {
+            // No existing row — insert with empty pipelines
+            conn.execute(
+                "INSERT INTO cached_pipelines (project_id, pipelines_json, last_updated, error)
+                 VALUES (?1, '[]', ?2, ?3)",
+                rusqlite::params![project_id, last_updated, error],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn read_cached_pipelines(project_id: i64) -> Result<Option<CachedPipelineRow>> {
+        let conn = get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT project_id, pipelines_json, last_updated, error FROM cached_pipelines WHERE project_id = ?1"
+        )?;
+
+        let row = stmt.query_row(rusqlite::params![project_id], |row| {
+            Ok(CachedPipelineRow {
+                project_id: row.get(0)?,
+                pipelines_json: row.get(1)?,
+                last_updated: row.get(2)?,
+                error: row.get(3)?,
+            })
+        });
+
+        match row {
+            Ok(r) => Ok(Some(r)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(CignalerError::Database(e)),
+        }
     }
 }

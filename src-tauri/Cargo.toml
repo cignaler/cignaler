@@ -19,6 +19,8 @@ rusqlite = { version = "0.31.0", features = ["bundled"] }
 serde_json = "1.0"
 gitlab = "0.1806.0"
 tauri-plugin-shell = "2.3.3"
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = "2"
 dirs = "6.0"
 thiserror = "1.0"
 tracing = "0.1"
@@ -26,6 +28,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.24"
 url = "2.5"
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["time", "sync"] }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
