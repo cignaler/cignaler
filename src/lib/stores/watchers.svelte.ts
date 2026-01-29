@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { triggerManualRefresh } from "./pipelines.svelte";
 
 export interface ProjectWatcher {
     id: number;
@@ -204,6 +205,14 @@ export async function addWatcher(
 
     // Reload watchers to get the updated list
     await loadWatchers();
+
+    // Trigger immediate pipeline fetch for the new watcher
+    const newWatcher = watchersState.watchers.find(
+        w => w.name === name && w.ci_server_name === ciServerName && w.project_path === projectPath
+    );
+    if (newWatcher) {
+        triggerManualRefresh(newWatcher.id);
+    }
 }
 
 // Add a new CI server and update state
