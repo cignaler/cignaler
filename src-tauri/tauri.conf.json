@@ -23,7 +23,7 @@
   },
   "productName": "cignaler",
   "mainBinaryName": "cignaler",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "identifier": "com.ostwi.dev",
   "plugins": {
     "deep-link": {
