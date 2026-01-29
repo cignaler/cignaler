@@ -2,17 +2,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use cignaler::database::database::{
-    delete_ci_server_data, delete_project_data, init_db, read_ci_servers_data,
-    read_projects_data, save_ci_server_data, save_project_data, update_ci_server_data,
-    update_project_data, update_project_enabled,
+    delete_ci_server_data, delete_project_data, init_db, read_cached_pipelines,
+    read_ci_servers_data, read_projects_data, save_ci_server_data, save_project_data,
+    update_ci_server_data, update_project_data, update_project_enabled,
 };
 use cignaler::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
+use cignaler::pipeline_cache::{poll_single_watcher, set_tray_icon, start_background_poller};
 use cignaler::{CiProject, CiServer};
+use serde::Serialize;
 use tauri::{
-    image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager,
+    AppHandle, Emitter, Manager,
 };
 use tracing::{debug, error, info};
 
@@ -164,32 +165,50 @@ fn delete_project(id: i64) -> Result<(), String> {
 #[tauri::command]
 fn update_tray_icon(app: AppHandle, state: String) -> Result<(), String> {
     debug!("Updating tray icon to state: {}", state);
+    set_tray_icon(&app, &state)
+}
 
-    let icon_filename = match state.as_str() {
-        "success" => "tray-success.png",
-        "failed" => "tray-failed.png",
-        _ => "tray-pending.png",
-    };
+#[derive(Serialize)]
+struct CachedPipelinesResponse {
+    watcher_id: i64,
+    pipelines: serde_json::Value,
+    last_updated: Option<String>,
+    error: Option<String>,
+}
 
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+#[tauri::command]
+fn get_cached_pipelines(watcher_id: i64) -> Result<CachedPipelinesResponse, String> {
+    debug!("Reading cached pipelines for watcher_id={}", watcher_id);
 
-    let icon_path = resource_dir.join("icons").join(icon_filename);
-    debug!("Loading icon from: {:?}", icon_path);
-
-    let icon = Image::from_path(&icon_path)
-        .map_err(|e| format!("Failed to load icon from {:?}: {}", icon_path, e))?;
-
-    if let Some(tray) = app.tray_by_id("main-tray") {
-        tray.set_icon(Some(icon))
-            .map_err(|e| format!("Failed to set tray icon: {}", e))?;
-        debug!("Tray icon updated successfully to: {}", state);
-        Ok(())
-    } else {
-        Err("Tray icon with ID 'main-tray' not found".to_string())
+    match read_cached_pipelines(watcher_id) {
+        Ok(Some(row)) => {
+            let pipelines: serde_json::Value = serde_json::from_str(&row.pipelines_json)
+                .unwrap_or(serde_json::Value::Array(vec![]));
+            Ok(CachedPipelinesResponse {
+                watcher_id,
+                pipelines,
+                last_updated: Some(row.last_updated),
+                error: row.error,
+            })
+        }
+        Ok(None) => Ok(CachedPipelinesResponse {
+            watcher_id,
+            pipelines: serde_json::Value::Array(vec![]),
+            last_updated: None,
+            error: None,
+        }),
+        Err(e) => Err(e.to_string()),
     }
+}
+
+#[tauri::command]
+fn trigger_poll(app: AppHandle, watcher_id: i64) -> Result<(), String> {
+    debug!("Manual poll triggered for watcher_id={}", watcher_id);
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        poll_single_watcher(&handle, watcher_id).await;
+    });
+    Ok(())
 }
 
 fn main() {
@@ -211,6 +230,26 @@ fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // On Windows/Linux, deep links launch a new process.
+            // This callback fires in the already-running instance with the new args.
+            debug!("Single instance callback: argv={:?}", argv);
+
+            // Look for a cignaler:// URL in the argv
+            for arg in &argv {
+                if arg.starts_with("cignaler://") {
+                    info!("Deep link received via single-instance: {}", arg);
+                    let _ = app.emit("deep-link-received", arg.clone());
+                }
+            }
+
+            // Show and focus the main window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             get_pipelines,
@@ -224,7 +263,9 @@ fn main() {
             update_project,
             set_project_enabled,
             delete_project,
-            update_tray_icon
+            update_tray_icon,
+            get_cached_pipelines,
+            trigger_poll
         ])
         .setup(|app| {
             let toggle = MenuItemBuilder::with_id("toggle", "Show/Hide").build(app)?;
@@ -233,7 +274,7 @@ fn main() {
 
             let _tray = TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
-                .menu_on_left_click(false)
+                .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "toggle" => {
                         debug!("Toggle menu clicked");
@@ -289,6 +330,9 @@ fn main() {
                     }
                 });
             }
+
+            // Start background pipeline poller
+            start_background_poller(app.handle().clone());
 
             info!("Application setup complete");
             Ok(())

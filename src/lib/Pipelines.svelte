@@ -1,8 +1,7 @@
 <script lang="ts">
     import Pipeline from "./Pipeline.svelte";
-    import { invoke } from "@tauri-apps/api/core";
     import { watchersState } from "./stores/watchers.svelte";
-    import { onDestroy } from "svelte";
+    import { pipelinesCache, fetchCachedPipelines, triggerManualRefresh } from "./stores/pipelines.svelte";
     import { fade } from "svelte/transition";
 
     interface Props {
@@ -12,66 +11,24 @@
 
     let { selectedWatcherId, onpreferences }: Props = $props();
 
-    interface PipelineInterface {
-        ref: string;
-        web_url: string;
-        id: number;
-        status: string;
-        created_at: string;
-        updated_at: string | null;
-        finished_at: string | null;
-        sha: string | null;
-        source: string | null;
-    }
-
-    let pipes = $state<PipelineInterface[]>([]);
-    let pipelinesLoading = $state(false);
-    let pipelinesError = $state("");
-    let lastSync = $state<Date>(new Date());
-    let refreshInterval: ReturnType<typeof setInterval> | null = null;
-
-    const REFRESH_INTERVAL_MS = 30000; // 30 seconds
+    let refreshing = $state(false);
 
     let selectedWatcher = $derived(
         watchersState.watchers.find(w => w.id === selectedWatcherId)
     );
 
-    // Update tray icon based on pipeline state
-    async function updateTrayIcon(state: string) {
-        try {
-            await invoke("update_tray_icon", { state });
-        } catch (err) {
-            console.error("Failed to update tray icon:", err);
-        }
-    }
+    let cacheEntry = $derived(
+        selectedWatcherId != null ? pipelinesCache[selectedWatcherId] : undefined
+    );
 
-    async function loadPipelines() {
-        if (!selectedWatcher || !selectedWatcher.enabled || !selectedWatcher.default_branch) {
-            pipes = [];
-            return;
-        }
-
-        pipelinesLoading = true;
-        pipelinesError = "";
-
-        try {
-            const pipelineData = await invoke<PipelineInterface[]>("get_pipelines", {
-                ciServerName: selectedWatcher.ci_server_name,
-                projectName: selectedWatcher.project_path,
-                reference: selectedWatcher.default_branch,
-            });
-            pipes = pipelineData;
-            lastSync = new Date();
-        } catch (err) {
-            console.error(`Failed to load pipelines for ${selectedWatcher.name}:`, err);
-            pipelinesError = String(err);
-        } finally {
-            pipelinesLoading = false;
-        }
-    }
+    let pipes = $derived(cacheEntry?.pipelines ?? []);
+    let pipelinesError = $derived(cacheEntry?.error ?? "");
+    let lastUpdated = $derived(cacheEntry?.lastUpdated ?? null);
 
     function formatLastSync(): string {
-        return lastSync.toLocaleString([], {
+        if (!lastUpdated) return "Never";
+        const date = new Date(lastUpdated);
+        return date.toLocaleString([], {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -81,58 +38,21 @@
         });
     }
 
-    // Load pipelines when selected watcher changes & set up auto-refresh
+    // Hydrate from DB cache when selected watcher changes
     $effect(() => {
-        // Clear existing interval
-        if (refreshInterval) {
-            clearInterval(refreshInterval);
-            refreshInterval = null;
-        }
-
-        if (selectedWatcher) {
-            // Initial load
-            loadPipelines();
-
-            // Set up auto-refresh every 30 seconds
-            refreshInterval = setInterval(loadPipelines, REFRESH_INTERVAL_MS);
-        }
-
-        // Cleanup on effect re-run or unmount
-        return () => {
-            if (refreshInterval) {
-                clearInterval(refreshInterval);
-                refreshInterval = null;
-            }
-        };
-    });
-
-    // Also clean up on component destroy
-    onDestroy(() => {
-        if (refreshInterval) {
-            clearInterval(refreshInterval);
+        if (selectedWatcherId != null) {
+            fetchCachedPipelines(selectedWatcherId);
         }
     });
 
-    // Update tray icon when pipelines change
-    $effect(() => {
-        if (pipes.length > 0) {
-            // Find the most recent pipeline by sorting by updated_at or created_at
-            const sortedPipes = [...pipes].sort((a, b) => {
-                const dateA = new Date(a.updated_at || a.created_at).getTime();
-                const dateB = new Date(b.updated_at || b.created_at).getTime();
-                return dateB - dateA; // Most recent first
-            });
-
-            // Use the state of the most recent pipeline
-            const lastPipeline = sortedPipes[0];
-            if (lastPipeline) {
-                updateTrayIcon(lastPipeline.status);
-            }
-        } else if (!pipelinesLoading && !watchersState.loading) {
-            // No pipelines found, set to pending state
-            updateTrayIcon("pending");
-        }
-    });
+    async function handleManualRefresh() {
+        if (!selectedWatcherId) return;
+        refreshing = true;
+        await triggerManualRefresh(selectedWatcherId);
+        // The result will arrive via the pipeline-update event.
+        // We briefly show the spinner, then clear it after a short delay.
+        setTimeout(() => { refreshing = false; }, 1500);
+    }
 </script>
 
 <!-- Header with selected watcher info -->
@@ -156,12 +76,12 @@
             <div class="flex items-center gap-2 text-sm text-gray-500">
                 <span>Last sync: {formatLastSync()}</span>
                 <button
-                    onclick={loadPipelines}
+                    onclick={handleManualRefresh}
                     class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                    disabled={pipelinesLoading}
+                    disabled={refreshing}
                     aria-label="Refresh pipelines"
                 >
-                    <svg class="w-4 h-4 {pipelinesLoading ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-4 h-4 {refreshing ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                     </svg>
                 </button>
@@ -183,7 +103,7 @@
 
 <!-- Pipelines List -->
 <div class="flex-1 overflow-y-auto bg-gray-50">
-    {#if watchersState.loading || pipelinesLoading}
+    {#if watchersState.loading}
         <div class="flex justify-center py-12">
             <p class="text-sm text-gray-500">Loading pipelines...</p>
         </div>

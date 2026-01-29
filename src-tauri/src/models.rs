@@ -2,7 +2,7 @@ pub mod models {
     use rusqlite::{Result, Row};
     use serde::{Deserialize, Serialize};
 
-    #[derive(Serialize, Deserialize, Debug)]
+    #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct CiServer {
         pub name: String,
         pub server_type: String,
