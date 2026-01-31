@@ -10,20 +10,6 @@ pub mod database {
 
     static DB_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
 
-    fn get_db_path() -> PathBuf {
-        let data_dir = dirs::data_local_dir()
-            .or_else(|| dirs::home_dir())
-            .unwrap_or_else(|| PathBuf::from("."));
-
-        let app_dir = data_dir.join("cignaler");
-
-        if !app_dir.exists() {
-            let _ = fs::create_dir_all(&app_dir);
-        }
-
-        app_dir.join("cignaler.db")
-    }
-
     fn get_connection() -> Result<PooledConnection<SqliteConnectionManager>> {
         DB_POOL
             .get()
@@ -32,8 +18,12 @@ pub mod database {
             .map_err(CignalerError::from)
     }
 
-    pub fn init_db() -> Result<()> {
-        let db_path = get_db_path();
+    pub fn init_db(app_data_dir: PathBuf) -> Result<()> {
+        if !app_data_dir.exists() {
+            fs::create_dir_all(&app_data_dir)
+                .map_err(|e| CignalerError::Config(format!("Failed to create app data dir: {}", e)))?;
+        }
+        let db_path = app_data_dir.join("cignaler.db");
         info!("Initializing database at: {:?}", db_path);
 
         let manager = SqliteConnectionManager::file(&db_path);

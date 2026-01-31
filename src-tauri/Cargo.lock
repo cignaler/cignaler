@@ -496,7 +496,6 @@ name = "cignaler"
 version = "0.0.1"
 dependencies = [
  "chrono",
- "dirs",
  "gitlab",
  "r2d2",
  "r2d2_sqlite",

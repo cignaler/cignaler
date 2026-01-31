@@ -36,6 +36,7 @@
     "withGlobalTauri": false,
     "windows": [
       {
+        "visible": false,
         "fullscreen": false,
         "resizable": true,
         "title": "cignaler",

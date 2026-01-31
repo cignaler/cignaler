@@ -1,10 +1,7 @@
 <script lang="ts">
-  import ConfirmDialog from "./lib/components/ui/ConfirmDialog.svelte";
   import ToastContainer from "./lib/components/ui/ToastContainer.svelte";
   import Pipelines from "./lib/Pipelines.svelte";
   import WatchersSidebar from "./lib/WatchersSidebar.svelte";
-  import WatcherModal from "./lib/WatcherModal.svelte";
-  import PreferencesModal from "./lib/PreferencesModal.svelte";
   import { deleteWatcher, loadWatchers, serversState, watchersState, loadServers, type ProjectWatcher } from "./lib/stores/watchers.svelte";
   import { toast } from "./lib/stores/toast.svelte";
   import { initPipelineListener } from "./lib/stores/pipelines.svelte";
@@ -22,8 +19,7 @@
 
   // Load watchers and servers on app startup, and start pipeline event listener
   $effect(() => {
-    loadWatchers();
-    loadServers();
+    Promise.all([loadWatchers(), loadServers()]);
     initPipelineListener();
     initDeepLinkHandler();
   });
@@ -107,25 +103,34 @@
     <Pipelines selectedWatcherId={selectedWatcherId} onpreferences={showPreferencesModal} />
   </div>
 
-  <!-- Add/Edit Pipeline Watcher Modal -->
-  <WatcherModal
-    bind:open={watcherModalOpen}
-    editingWatcher={editingWatcher}
-  />
+  <!-- Add/Edit Pipeline Watcher Modal (lazy) -->
+  {#if watcherModalOpen}
+    {#await import("./lib/WatcherModal.svelte") then { default: WatcherModal }}
+      <WatcherModal bind:open={watcherModalOpen} editingWatcher={editingWatcher} />
+    {/await}
+  {/if}
 
-  <!-- Preferences Modal -->
-  <PreferencesModal bind:open={preferencesModalState} />
+  <!-- Preferences Modal (lazy) -->
+  {#if preferencesModalState}
+    {#await import("./lib/PreferencesModal.svelte") then { default: PreferencesModal }}
+      <PreferencesModal bind:open={preferencesModalState} />
+    {/await}
+  {/if}
 
-  <!-- Confirm Delete Watcher Dialog -->
-  <ConfirmDialog
-    bind:open={confirmDeleteWatcherOpen}
-    title="Delete Watcher"
-    message={`Are you sure you want to delete the watcher "${watcherToDelete?.name}"?`}
-    confirmText="Delete"
-    variant="danger"
-    loading={deletingWatcherId !== null}
-    onconfirm={confirmDeleteWatcher}
-  />
+  <!-- Confirm Delete Watcher Dialog (lazy) -->
+  {#if confirmDeleteWatcherOpen}
+    {#await import("./lib/components/ui/ConfirmDialog.svelte") then { default: ConfirmDialog }}
+      <ConfirmDialog
+        bind:open={confirmDeleteWatcherOpen}
+        title="Delete Watcher"
+        message={`Are you sure you want to delete the watcher "${watcherToDelete?.name}"?`}
+        confirmText="Delete"
+        variant="danger"
+        loading={deletingWatcherId !== null}
+        onconfirm={confirmDeleteWatcher}
+      />
+    {/await}
+  {/if}
 
   <!-- Toast Container -->
   <ToastContainer />

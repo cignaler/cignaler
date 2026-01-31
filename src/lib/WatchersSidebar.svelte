@@ -40,7 +40,7 @@
   h-screen
 ">
   <!-- Logo/Header -->
-  <div class="p-5 border-b border-gray-200">
+  <div class="p-5">
     <div class="flex items-center gap-2">
       <div class="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
         <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">

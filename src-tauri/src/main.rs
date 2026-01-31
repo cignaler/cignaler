@@ -202,6 +202,15 @@ fn get_cached_pipelines(watcher_id: i64) -> Result<CachedPipelinesResponse, Stri
 }
 
 #[tauri::command]
+fn show_main_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn trigger_poll(app: AppHandle, watcher_id: i64) -> Result<(), String> {
     debug!("Manual poll triggered for watcher_id={}", watcher_id);
     let handle = app.clone();
@@ -222,12 +231,6 @@ fn main() {
         .init();
 
     info!("Starting Cignaler...");
-
-    // Initialize database - exit on failure
-    if let Err(e) = init_db() {
-        error!("Failed to initialize database: {}", e);
-        std::process::exit(1);
-    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
@@ -265,9 +268,16 @@ fn main() {
             delete_project,
             update_tray_icon,
             get_cached_pipelines,
-            trigger_poll
+            trigger_poll,
+            show_main_window
         ])
         .setup(|app| {
+            let app_data_dir = app.path().app_data_dir()
+                .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
+
+            init_db(app_data_dir)
+                .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
             let toggle = MenuItemBuilder::with_id("toggle", "Show/Hide").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&toggle, &quit]).build()?;
