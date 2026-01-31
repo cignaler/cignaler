@@ -28,8 +28,8 @@
   --color-secondary-950: #082f49;
 
   /* Typography System */
-  --font-family-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
-  --font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-family-sans: 'Outfit Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
 }
 
 /* Global Styles */

@@ -4,14 +4,101 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + Svelte + TS</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>cignaler</title>
   </head>
 
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- Loading skeleton — replaced automatically when Svelte mounts -->
+      <style>
+        .skeleton-container {
+          display: flex;
+          height: 100vh;
+          background: #f9fafb;
+          font-family: system-ui, sans-serif;
+        }
+        .skeleton-sidebar {
+          width: 320px;
+          background: #fff;
+          border-right: 1px solid #e5e7eb;
+          padding: 20px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .skeleton-header {
+          height: 32px;
+          width: 60%;
+          background: #e5e7eb;
+          border-radius: 8px;
+          margin-bottom: 8px;
+        }
+        .skeleton-item {
+          height: 56px;
+          background: #f3f4f6;
+          border-radius: 10px;
+        }
+        .skeleton-item:first-of-type {
+          background: linear-gradient(90deg, #fff7ed, #ffedd5);
+          border: 1px solid #fed7aa;
+        }
+        .skeleton-main {
+          flex: 1;
+          padding: 24px 32px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .skeleton-topbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          height: 40px;
+        }
+        .skeleton-title {
+          height: 28px;
+          width: 200px;
+          background: #e5e7eb;
+          border-radius: 8px;
+        }
+        .skeleton-btn {
+          height: 36px;
+          width: 100px;
+          background: #e5e7eb;
+          border-radius: 8px;
+        }
+        .skeleton-card {
+          height: 72px;
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+        }
+        @keyframes skeleton-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        .skeleton-container * {
+          animation: skeleton-pulse 1.5s ease-in-out infinite;
+        }
+      </style>
+      <div class="skeleton-container">
+        <div class="skeleton-sidebar">
+          <div class="skeleton-header"></div>
+          <div class="skeleton-item"></div>
+          <div class="skeleton-item"></div>
+          <div class="skeleton-item"></div>
+        </div>
+        <div class="skeleton-main">
+          <div class="skeleton-topbar">
+            <div class="skeleton-title"></div>
+            <div class="skeleton-btn"></div>
+          </div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

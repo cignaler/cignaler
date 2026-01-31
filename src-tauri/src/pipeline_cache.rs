@@ -21,7 +21,8 @@ pub fn start_background_poller(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         info!("Background pipeline poller started");
 
-        // First poll immediately on startup
+        // Let frontend initialize before competing for resources
+        tokio::time::sleep(Duration::from_secs(3)).await;
         poll_all_watchers(&app_handle).await;
 
         let mut ticker = interval(Duration::from_secs(60));
