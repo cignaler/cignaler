@@ -25,13 +25,7 @@
   "mainBinaryName": "cignaler",
   "version": "0.0.1",
   "identifier": "com.ostwi.dev",
-  "plugins": {
-    "deep-link": {
-      "desktop": {
-        "schemes": ["cignaler"]
-      }
-    }
-  },
+  "plugins": {},
   "app": {
     "withGlobalTauri": false,
     "windows": [

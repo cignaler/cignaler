@@ -15,7 +15,12 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
-use tracing::{debug, error, info};
+use serde::Deserialize;
+use std::fs;
+use std::path::PathBuf;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::UnixListener;
+use tracing::{debug, error, info, warn};
 
 #[tauri::command]
 fn get_pipelines(
@@ -220,6 +225,180 @@ fn trigger_poll(app: AppHandle, watcher_id: i64) -> Result<(), String> {
     Ok(())
 }
 
+const CHROME_EXTENSION_ID: &str = "mnpadnofpbfgbomckhchncfeepeooifd";
+
+fn register_native_messaging_host() {
+    let host_binary = match std::env::current_exe() {
+        Ok(exe) => exe.parent().unwrap_or(&PathBuf::from(".")).join("cignaler-native-host"),
+        Err(e) => {
+            warn!("Could not resolve current executable path: {}", e);
+            return;
+        }
+    };
+
+    if !host_binary.exists() {
+        warn!(
+            "Native messaging host binary not found at {:?}, skipping registration",
+            host_binary
+        );
+        return;
+    }
+
+    let manifest_dir = match dirs::data_dir() {
+        Some(d) => d
+            .join("Google")
+            .join("Chrome")
+            .join("NativeMessagingHosts"),
+        None => {
+            warn!("Could not resolve data directory for native messaging manifest");
+            return;
+        }
+    };
+
+    if let Err(e) = fs::create_dir_all(&manifest_dir) {
+        warn!("Failed to create native messaging manifest directory: {}", e);
+        return;
+    }
+
+    let manifest = serde_json::json!({
+        "name": "com.cignaler.app",
+        "description": "Cignaler native messaging host",
+        "path": host_binary.to_string_lossy(),
+        "type": "stdio",
+        "allowed_origins": [format!("chrome-extension://{}/", CHROME_EXTENSION_ID)]
+    });
+
+    let manifest_path = manifest_dir.join("com.cignaler.app.json");
+    match fs::write(&manifest_path, serde_json::to_string_pretty(&manifest).unwrap()) {
+        Ok(()) => info!("Native messaging host manifest written to {:?}", manifest_path),
+        Err(e) => warn!("Failed to write native messaging host manifest: {}", e),
+    }
+}
+
+/// Request from native messaging host
+#[derive(Deserialize)]
+struct NativeHostRequest {
+    action: String,
+    name: String,
+    project: String,
+    #[serde(rename = "ref")]
+    reference: String,
+    ci_server: String,
+}
+
+/// Get the Unix socket path for IPC with native host
+fn get_socket_path() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("com.ostwi.dev").join("cignaler.sock"))
+}
+
+/// Start the Unix socket listener for native host IPC
+fn start_ipc_listener(app_handle: AppHandle) {
+    let socket_path = match get_socket_path() {
+        Some(p) => p,
+        None => {
+            warn!("Could not resolve socket path for IPC listener");
+            return;
+        }
+    };
+
+    // Remove existing socket file if it exists
+    let _ = fs::remove_file(&socket_path);
+
+    // Ensure parent directory exists
+    if let Some(parent) = socket_path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            warn!("Failed to create socket directory: {}", e);
+            return;
+        }
+    }
+
+    tauri::async_runtime::spawn(async move {
+        let listener = match UnixListener::bind(&socket_path) {
+            Ok(l) => {
+                info!("IPC socket listening at {:?}", socket_path);
+                l
+            }
+            Err(e) => {
+                error!("Failed to bind IPC socket: {}", e);
+                return;
+            }
+        };
+
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let app = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        handle_ipc_connection(stream, app).await;
+                    });
+                }
+                Err(e) => {
+                    error!("Failed to accept IPC connection: {}", e);
+                }
+            }
+        }
+    });
+}
+
+/// Handle a single IPC connection from native host
+async fn handle_ipc_connection(stream: tokio::net::UnixStream, app_handle: AppHandle) {
+    let (reader, mut writer) = stream.into_split();
+    let mut reader = BufReader::new(reader);
+    let mut line = String::new();
+
+    // Read JSON line from native host
+    match reader.read_line(&mut line).await {
+        Ok(0) => return, // Connection closed
+        Ok(_) => {}
+        Err(e) => {
+            error!("Failed to read from IPC socket: {}", e);
+            return;
+        }
+    }
+
+    // Parse request
+    let response = match serde_json::from_str::<NativeHostRequest>(&line) {
+        Ok(req) => {
+            if req.action == "add-watcher" {
+                // Save to database
+                match save_project_data(
+                    req.name.clone(),
+                    req.ci_server.clone(),
+                    req.project.clone(),
+                    Some(req.reference.clone()),
+                ) {
+                    Ok(()) => {
+                        info!("Watcher '{}' added via IPC", req.name);
+                        // Emit event to refresh UI
+                        if let Err(e) = app_handle.emit("watcher-added", ()) {
+                            error!("Failed to emit watcher-added event: {}", e);
+                        }
+                        r#"{"success":true}"#.to_string()
+                    }
+                    Err(e) => {
+                        error!("Failed to save watcher: {}", e);
+                        format!(r#"{{"success":false,"error":"{}"}}"#, e)
+                    }
+                }
+            } else {
+                format!(r#"{{"success":false,"error":"Unknown action: {}"}}"#, req.action)
+            }
+        }
+        Err(e) => {
+            error!("Failed to parse IPC request: {}", e);
+            format!(r#"{{"success":false,"error":"Invalid JSON: {}"}}"#, e)
+        }
+    };
+
+    // Send response back to native host
+    if let Err(e) = writer.write_all(response.as_bytes()).await {
+        error!("Failed to write IPC response: {}", e);
+    }
+    if let Err(e) = writer.write_all(b"\n").await {
+        error!("Failed to write IPC newline: {}", e);
+    }
+}
+
 fn main() {
     // Initialize tracing subscriber for structured logging
     tracing_subscriber::fmt()
@@ -233,19 +412,8 @@ fn main() {
     info!("Starting Cignaler...");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // On Windows/Linux, deep links launch a new process.
-            // This callback fires in the already-running instance with the new args.
             debug!("Single instance callback: argv={:?}", argv);
-
-            // Look for a cignaler:// URL in the argv
-            for arg in &argv {
-                if arg.starts_with("cignaler://") {
-                    info!("Deep link received via single-instance: {}", arg);
-                    let _ = app.emit("deep-link-received", arg.clone());
-                }
-            }
 
             // Show and focus the main window
             if let Some(window) = app.get_webview_window("main") {
@@ -277,6 +445,9 @@ fn main() {
 
             init_db(app_data_dir)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+            register_native_messaging_host();
+            start_ipc_listener(app.handle().clone());
 
             let toggle = MenuItemBuilder::with_id("toggle", "Show/Hide").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;

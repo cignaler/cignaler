@@ -6,8 +6,17 @@ authors = ["you"]
 license = ""
 repository = ""
 edition = "2021"
+default-run = "cignaler"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "cignaler"
+path = "src/main.rs"
+
+[[bin]]
+name = "cignaler-native-host"
+path = "src/bin/native_host.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.5.3", features = [] }
@@ -19,7 +28,6 @@ rusqlite = { version = "0.31.0", features = ["bundled"] }
 serde_json = "1.0"
 gitlab = "0.1806.0"
 tauri-plugin-shell = "2.3.3"
-tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
 thiserror = "1.0"
 tracing = "0.1"
@@ -29,6 +37,7 @@ r2d2_sqlite = "0.24"
 url = "2.5"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["time", "sync"] }
+dirs = "6"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
