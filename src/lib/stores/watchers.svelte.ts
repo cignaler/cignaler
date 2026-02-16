@@ -1,5 +1,30 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { triggerManualRefresh } from "./pipelines.svelte";
+
+let watcherAddedUnlisten: UnlistenFn | null = null;
+
+/**
+ * Initialize listener for watcher-added events from native host IPC.
+ * This reloads watchers when a new one is added via the Chrome extension.
+ */
+export async function initWatcherAddedListener(): Promise<void> {
+    if (watcherAddedUnlisten) return;
+
+    watcherAddedUnlisten = await listen("watcher-added", async () => {
+        console.log("Watcher added via native host, reloading watchers...");
+        await loadWatchers();
+
+        // Trigger pipeline fetch for the newest watcher
+        const watchers = watchersState.watchers;
+        if (watchers.length > 0) {
+            const newestWatcher = watchers[watchers.length - 1];
+            if (newestWatcher) {
+                triggerManualRefresh(newestWatcher.id);
+            }
+        }
+    });
+}
 
 export interface ProjectWatcher {
     id: number;

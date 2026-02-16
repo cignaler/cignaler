@@ -2,10 +2,9 @@
   import ToastContainer from "./lib/components/ui/ToastContainer.svelte";
   import Pipelines from "./lib/Pipelines.svelte";
   import WatchersSidebar from "./lib/WatchersSidebar.svelte";
-  import { deleteWatcher, loadWatchers, serversState, watchersState, loadServers, type ProjectWatcher } from "./lib/stores/watchers.svelte";
+  import { deleteWatcher, loadWatchers, serversState, watchersState, loadServers, initWatcherAddedListener, type ProjectWatcher } from "./lib/stores/watchers.svelte";
   import { toast } from "./lib/stores/toast.svelte";
   import { initPipelineListener } from "./lib/stores/pipelines.svelte";
-  import { initDeepLinkHandler } from "./lib/deep-link-handler";
 
   let selectedWatcherId = $state<number | null>(null);
   let watcherModalOpen = $state(false);
@@ -17,11 +16,11 @@
   let watcherToDelete = $state<ProjectWatcher | null>(null);
   let deletingWatcherId = $state<number | null>(null);
 
-  // Load watchers and servers on app startup, and start pipeline event listener
+  // Load watchers and servers on app startup, and start event listeners
   $effect(() => {
     Promise.all([loadWatchers(), loadServers()]);
     initPipelineListener();
-    initDeepLinkHandler();
+    initWatcherAddedListener();
   });
 
   function handleSelectWatcher(id: number) {
