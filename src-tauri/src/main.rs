@@ -7,7 +7,7 @@ use cignaler::database::database::{
     update_ci_server_data, update_project_data, update_project_enabled,
 };
 use cignaler::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
-use cignaler::pipeline_cache::{poll_single_watcher, set_tray_icon, start_background_poller};
+use cignaler::pipeline_cache::{poll_single_watcher, set_tray_icon, start_background_poller, update_tray_from_all_cached};
 use cignaler::{CiProject, CiServer};
 use serde::Serialize;
 use tauri::{
@@ -156,9 +156,11 @@ fn update_project(
 }
 
 #[tauri::command]
-fn set_project_enabled(id: i64, enabled: bool) -> Result<(), String> {
+fn set_project_enabled(app: AppHandle, id: i64, enabled: bool) -> Result<(), String> {
     debug!("Setting project enabled: id={}, enabled={}", id, enabled);
-    update_project_enabled(id, enabled).map_err(|e| e.to_string())
+    update_project_enabled(id, enabled).map_err(|e| e.to_string())?;
+    update_tray_from_all_cached(&app);
+    Ok(())
 }
 
 #[tauri::command]
