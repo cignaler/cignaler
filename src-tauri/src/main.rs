@@ -455,6 +455,14 @@ fn main() {
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&toggle, &quit]).build()?;
 
+            let initial_tray_icon = {
+                let resource_dir = app.path().resource_dir()
+                    .map_err(|e| format!("Failed to get resource dir: {}", e))?;
+                let icon_path = resource_dir.join("icons").join("tray-pending.png");
+                tauri::image::Image::from_path(&icon_path)
+                    .unwrap_or_else(|_| app.default_window_icon().unwrap().clone())
+            };
+
             let _tray = TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -498,7 +506,7 @@ fn main() {
                     }
                     _ => (),
                 })
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(initial_tray_icon)
                 .build(app)?;
 
             // Set up window close handler to minimize to tray instead of closing
