@@ -42,7 +42,7 @@
   <!-- Logo/Header -->
   <div class="p-5">
     <div class="flex items-center gap-2">
-      <img src="/cignaler_icon.jpg" alt="Cignaler" class="w-8 h-8 rounded-lg" />
+      <img src="/cignaler_icon.png" alt="Cignaler" class="w-8 h-8 rounded-lg" />
       <div>
         <h1 class="text-base font-bold text-gray-900">Cignaler</h1>
         <p class="text-[10px] text-gray-500 uppercase tracking-wide">Pipelines</p>
