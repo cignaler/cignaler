@@ -301,7 +301,7 @@ fn status_to_tray_state(status: &str) -> &str {
     }
 }
 
-fn update_tray_from_all_cached(app_handle: &AppHandle) {
+pub fn update_tray_from_all_cached(app_handle: &AppHandle) {
     let projects = match read_projects_data() {
         Ok(p) => p,
         Err(_) => return,
