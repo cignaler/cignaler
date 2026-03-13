@@ -1,0 +1,97 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@theme {
+  /* Color System */
+  --color-primary-50: #fff5f2;
+  --color-primary-100: #fff1ee;
+  --color-primary-200: #ffe4de;
+  --color-primary-300: #ffd5cc;
+  --color-primary-400: #ffbcad;
+  --color-primary-500: #fe795d;
+  --color-primary-600: #ef562f;
+  --color-primary-700: #eb4f27;
+  --color-primary-800: #cc4522;
+  --color-primary-900: #a5371b;
+  --color-primary-950: #7a2912;
+
+  --color-secondary-50: #f0f9ff;
+  --color-secondary-100: #e0f2fe;
+  --color-secondary-200: #bae6fd;
+  --color-secondary-300: #7dd3fc;
+  --color-secondary-400: #38bdf8;
+  --color-secondary-500: #0ea5e9;
+  --color-secondary-600: #0284c7;
+  --color-secondary-700: #0369a1;
+  --color-secondary-800: #075985;
+  --color-secondary-900: #0c4a6e;
+  --color-secondary-950: #082f49;
+
+  /* Typography System */
+  --font-family-sans: 'Outfit Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+}
+
+/* Global Styles */
+* {
+  font-family: var(--font-family-sans);
+}
+
+body {
+  font-family: var(--font-family-sans);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-primary-50) 40%, white) 0%,
+    color-mix(in srgb, var(--color-secondary-50) 30%, white) 50%,
+    color-mix(in srgb, var(--color-primary-50) 20%, white) 100%
+  );
+  background-attachment: fixed;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Atmospheric noise texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+}
+
+/* Monospace for technical content */
+code,
+pre,
+.font-mono {
+  font-family: var(--font-family-mono);
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-primary-50) 30%, white);
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-primary-300) 60%, transparent);
+  border-radius: 5px;
+  transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-400);
+}

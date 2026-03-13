@@ -1,194 +1,181 @@
 <script lang="ts">
     import Pipeline from "./Pipeline.svelte";
-    import {invoke} from "@tauri-apps/api/core";
-    import { Toast, Button, Label, Select } from 'flowbite-svelte';
-    import { onMount, onDestroy } from 'svelte';
+    import { watchersState, serversState } from "./stores/watchers.svelte";
+    import { pipelinesCache, fetchCachedPipelines, triggerManualRefresh } from "./stores/pipelines.svelte";
+    import { open } from '@tauri-apps/plugin-shell';
+    import { fade } from "svelte/transition";
 
-    interface PipelineInterface {
-        ref: string;
-        web_url: string;
-        id: number;
-        status: string;
-        created_at: string;
-        updated_at: string | null;
-        finished_at: string | null;
+    interface Props {
+        selectedWatcherId: number | null;
+        onpreferences: () => void;
     }
 
-    interface CiServer {
-        name: string;
-        server_type: string;
-        url_string: string;
-        api_key: string;
+    let { selectedWatcherId, onpreferences }: Props = $props();
+
+    let refreshing = $state(false);
+
+    let selectedWatcher = $derived(
+        watchersState.watchers.find(w => w.id === selectedWatcherId)
+    );
+
+    let cacheEntry = $derived(
+        selectedWatcherId != null ? pipelinesCache[selectedWatcherId] : undefined
+    );
+
+    let pipes = $derived(cacheEntry?.pipelines ?? []);
+    let pipelinesError = $derived(cacheEntry?.error ?? "");
+    let lastUpdated = $derived(cacheEntry?.lastUpdated ?? null);
+
+    function formatLastSync(): string {
+        if (!lastUpdated) return "Never";
+        const date = new Date(lastUpdated);
+        return date.toLocaleString([], {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
     }
 
-    let pipes: PipelineInterface[] = [];
-    let servers: CiServer[] = [];
-    let selectedServer = "";
-    let projectName = ""; // User needs to enter this
-    let selectedReference = ""; // Will be populated from API
-    let references: string[] = [];
-    let loading = false;
-    let error = "";
-
-    let intervalId: number | null = null;
-    let ms = 10000;
-
-    async function loadServers() {
-        try {
-            const data = await invoke("read_ci_servers") as CiServer[];
-            servers = data;
-            if (servers.length > 0 && !selectedServer) {
-                selectedServer = servers[0].name;
-            }
-        } catch (err) {
-            console.error("Failed to load CI servers:", err);
-            error = `Failed to load CI servers: ${err}`;
+    // Hydrate from DB cache when selected watcher changes
+    $effect(() => {
+        if (selectedWatcherId != null) {
+            fetchCachedPipelines(selectedWatcherId);
         }
-    }
-
-    async function loadReferences() {
-        if (!selectedServer || !projectName) return;
-        
-        try {
-            const refs = await invoke('get_pipeline_references', {
-                ciServerName: selectedServer,
-                projectName: projectName
-            }) as string[];
-            references = refs;
-            if (refs.length > 0 && !selectedReference) {
-                selectedReference = refs[0];
-            }
-        } catch (err) {
-            console.error("Failed to load references:", err);
-            error = `Failed to load references: ${err}`;
-        }
-    }
-
-    async function get_pipelines() {
-        if (!selectedServer || !projectName || !selectedReference) {
-            return;
-        }
-
-        try {
-            loading = true;
-            error = "";
-            const data = await invoke('get_pipelines', {
-                ciServerName: selectedServer,
-                projectName: projectName,
-                reference: selectedReference
-            }) as PipelineInterface[];
-            pipes = data;
-        } catch (err) {
-            console.error("Failed to get pipelines:", err);
-            error = `Failed to get pipelines: ${err}`;
-            pipes = [];
-        } finally {
-            loading = false;
-        }
-    }
-
-    function startPolling() {
-        if (intervalId) clearInterval(intervalId);
-        intervalId = setInterval(get_pipelines, ms);
-    }
-
-    function stopPolling() {
-        if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-        }
-    }
-
-    $: if (selectedServer) {
-        loadReferences();
-    }
-
-    $: if (selectedServer && projectName && selectedReference) {
-        get_pipelines();
-        startPolling();
-    } else {
-        stopPolling();
-    }
-
-    onMount(() => {
-        loadServers();
     });
 
-    onDestroy(() => {
-        stopPolling();
-    });
+    function openArchivedPipelines() {
+        if (!selectedWatcher) return;
+        const server = serversState.servers.find(s => s.name === selectedWatcher.ci_server_name);
+        if (!server) return;
+        const baseUrl = server.url_string.replace(/\/+$/, '');
+        const ref = selectedWatcher.default_branch;
+        const refParam = ref ? `?ref=${encodeURIComponent(ref)}` : '';
+        open(`${baseUrl}/${selectedWatcher.project_path}/-/pipelines${refParam}`);
+    }
+
+    async function handleManualRefresh() {
+        if (!selectedWatcherId) return;
+        refreshing = true;
+        await triggerManualRefresh(selectedWatcherId);
+        // The result will arrive via the pipeline-update event.
+        // We briefly show the spinner, then clear it after a short delay.
+        setTimeout(() => { refreshing = false; }, 1500);
+    }
 </script>
 
-<div class="flex justify-center">
-    <div class="container mx-auto flex flex-col px-4 drop-shadow-lg">
-        <!-- Configuration Section -->
-        <div class="bg-white rounded-lg p-6 mb-6 shadow-sm">
-            <h3 class="text-lg font-semibold mb-4">Pipeline Configuration</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <Label for="server-select" class="block mb-2">CI Server</Label>
-                    <Select id="server-select" bind:value={selectedServer}>
-                        {#each servers as server}
-                            <option value={server.name}>{server.name} ({server.server_type})</option>
-                        {/each}
-                    </Select>
+<!-- Header with selected watcher info -->
+<div class="bg-white border-b border-gray-200 px-8 py-6">
+    <div class="flex items-start justify-between">
+        {#if selectedWatcher}
+            <div class="flex-1">
+                <div class="flex items-center gap-3 mb-2">
+                    <h1 class="text-2xl font-bold text-gray-900">{selectedWatcher.name}</h1>
+                    {#if selectedWatcher.enabled}
+                        <span class="bg-green-100 text-green-700 text-xs font-medium px-2.5 py-1 rounded">Active</span>
+                    {:else}
+                        <span class="bg-gray-100 text-gray-700 text-xs font-medium px-2.5 py-1 rounded">Idle</span>
+                    {/if}
                 </div>
-                <div>
-                    <Label for="project-input" class="block mb-2">Project Path</Label>
-                    <input 
-                        id="project-input"
-                        type="text" 
-                        bind:value={projectName}
-                        placeholder="owner/project-name"
-                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-                    />
+                <p class="text-sm text-gray-500">
+                    {selectedWatcher.project_path} @ {selectedWatcher.default_branch || 'default'}
+                </p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-sm text-gray-500">
+                    <span>Last sync: {formatLastSync()}</span>
+                    <button
+                        onclick={handleManualRefresh}
+                        class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                        disabled={refreshing}
+                        aria-label="Refresh pipelines"
+                    >
+                        <svg class="w-4 h-4 {refreshing ? 'animate-spin' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                    </button>
                 </div>
-                <div>
-                    <Label for="ref-select" class="block mb-2">Branch/Tag</Label>
-                    <Select id="ref-select" bind:value={selectedReference}>
-                        {#each references as ref}
-                            <option value={ref}>{ref}</option>
-                        {/each}
-                    </Select>
-                </div>
-            </div>
-            <div class="mt-4">
-                <Button on:click={get_pipelines} disabled={loading || !selectedServer || !projectName}>
-                    {loading ? 'Loading...' : 'Refresh Pipelines'}
-                </Button>
-            </div>
-        </div>
-
-        <!-- Error Display -->
-        {#if error}
-            <Toast color="red" class="mb-4">
-                <svelte:fragment slot="icon">
-                    <span class="sr-only">Error icon</span>
-                </svelte:fragment>
-                {error}
-            </Toast>
-        {/if}
-
-        <!-- No Servers Message -->
-        {#if servers.length === 0}
-            <div class="flex justify-center">
-                <p class="text-gray-500">No CI servers configured. Please add a CI server first.</p>
-            </div>
-        {:else if loading}
-            <div class="flex justify-center">
-                <p>Loading pipelines...</p>
-            </div>
-        {:else if pipes.length === 0 && !error}
-            <div class="flex justify-center">
-                <p class="text-gray-500">No pipelines found. Check your configuration and try again.</p>
+                <button
+                    onclick={onpreferences}
+                    class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    Preferences
+                </button>
             </div>
         {:else}
-            <!-- Pipelines List -->
-            {#each pipes as item}
-                <div class="flex items-center">
-                    <Pipeline name={item.ref} state={item.status} lastExecuted={item.created_at} webUrl={item.web_url}/>
-                </div>
-            {/each}
+            <div class="flex-1"></div>
+            <button
+                onclick={onpreferences}
+                class="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Preferences
+            </button>
         {/if}
     </div>
+</div>
+
+<!-- Pipelines List -->
+<div class="flex-1 overflow-y-auto bg-gray-50">
+    {#if watchersState.loading}
+        <div class="flex justify-center py-12">
+            <p class="text-sm text-gray-500">Loading pipelines...</p>
+        </div>
+    {:else if watchersState.watchers.length === 0}
+        <div class="flex flex-col items-center justify-center py-12" transition:fade={{ duration: 200 }}>
+            <div class="mb-4">
+                <svg class="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/>
+                </svg>
+            </div>
+            <p class="text-sm text-gray-500">No watchers yet</p>
+            <p class="text-xs text-gray-400 mt-1">Click "Add New Watcher" in the sidebar to get started</p>
+        </div>
+    {:else if pipelinesError}
+        <div class="flex justify-center py-12" transition:fade={{ duration: 200 }}>
+            <p class="text-sm text-red-500">Error: {pipelinesError}</p>
+        </div>
+    {:else if pipes.length === 0}
+        <div class="flex flex-col items-center justify-center py-12" transition:fade={{ duration: 200 }}>
+            <div class="animate-pulse mb-4">
+                <svg class="w-16 h-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+            </div>
+            <p class="text-sm text-gray-500">No pipelines found</p>
+        </div>
+    {:else}
+        <div class="bg-white">
+            {#each pipes as item (item.id)}
+                <Pipeline
+                    name={item.ref}
+                    state={item.status}
+                    lastExecuted={item.created_at}
+                    updatedAt={item.updated_at}
+                    sha={item.sha}
+                    source={item.source}
+                    webUrl={item.web_url}
+                />
+            {/each}
+        </div>
+        {#if pipes.length >= 20}
+        <div class="flex justify-center py-8">
+            <button onclick={openArchivedPipelines} class="flex items-center gap-2 text-sm text-gray-600 hover:text-orange-600 transition-colors">
+                <span>View archived pipelines</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                </svg>
+            </button>
+        </div>
+        {/if}
+    {/if}
 </div>
