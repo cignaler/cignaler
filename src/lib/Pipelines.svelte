@@ -1,7 +1,8 @@
 <script lang="ts">
     import Pipeline from "./Pipeline.svelte";
-    import { watchersState } from "./stores/watchers.svelte";
+    import { watchersState, serversState } from "./stores/watchers.svelte";
     import { pipelinesCache, fetchCachedPipelines, triggerManualRefresh } from "./stores/pipelines.svelte";
+    import { open } from '@tauri-apps/plugin-shell';
     import { fade } from "svelte/transition";
 
     interface Props {
@@ -44,6 +45,16 @@
             fetchCachedPipelines(selectedWatcherId);
         }
     });
+
+    function openArchivedPipelines() {
+        if (!selectedWatcher) return;
+        const server = serversState.servers.find(s => s.name === selectedWatcher.ci_server_name);
+        if (!server) return;
+        const baseUrl = server.url_string.replace(/\/+$/, '');
+        const ref = selectedWatcher.default_branch;
+        const refParam = ref ? `?ref=${encodeURIComponent(ref)}` : '';
+        open(`${baseUrl}/${selectedWatcher.project_path}/-/pipelines${refParam}`);
+    }
 
     async function handleManualRefresh() {
         if (!selectedWatcherId) return;
@@ -149,20 +160,22 @@
                     name={item.ref}
                     state={item.status}
                     lastExecuted={item.created_at}
-                    finishedAt={item.finished_at}
+                    updatedAt={item.updated_at}
                     sha={item.sha}
                     source={item.source}
                     webUrl={item.web_url}
                 />
             {/each}
         </div>
+        {#if pipes.length >= 20}
         <div class="flex justify-center py-8">
-            <button class="flex items-center gap-2 text-sm text-gray-600 hover:text-orange-600 transition-colors">
+            <button onclick={openArchivedPipelines} class="flex items-center gap-2 text-sm text-gray-600 hover:text-orange-600 transition-colors">
                 <span>View archived pipelines</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
                 </svg>
             </button>
         </div>
+        {/if}
     {/if}
 </div>

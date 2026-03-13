@@ -6,7 +6,7 @@
         name,
         state,
         lastExecuted = null,
-        finishedAt = null,
+        updatedAt = null,
         sha = null,
         source = null
     }: {
@@ -14,7 +14,7 @@
         name: string;
         state: string;
         lastExecuted?: string | null;
-        finishedAt?: string | null;
+        updatedAt?: string | null;
         sha?: string | null;
         source?: string | null;
     } = $props();
@@ -39,26 +39,41 @@
         }
     }
 
-    function formatDuration(startDate: string | null, endDate: string | null): string {
-        if (!startDate || !endDate) return "N/A";
-        const start = new Date(startDate).getTime();
-        const end = new Date(endDate).getTime();
-        const diffMs = end - start;
+    function formatTimeAgo(date: string | null): string {
+        if (!date) return "N/A";
+        const now = Date.now();
+        const then = new Date(date).getTime();
+        const diffMs = now - then;
 
-        if (diffMs < 0) return "N/A";
+        if (diffMs < 0) return "just now";
 
-        const totalSeconds = Math.floor(diffMs / 1000);
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
+        const seconds = Math.floor(diffMs / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
 
-        if (hours > 0) {
-            return `${hours}h ${minutes}m ${seconds}s`;
-        } else if (minutes > 0) {
-            return `${minutes}m ${seconds}s`;
-        } else {
-            return `${seconds}s`;
-        }
+        if (seconds < 60) return `${seconds}s ago`;
+        if (minutes < 60) return `${minutes}m ago`;
+        if (hours < 24) return `${hours}h ago`;
+        if (days === 1) return "Yesterday";
+        return `${days}d ago`;
+    }
+
+    function formatElapsed(date: string | null): string {
+        if (!date) return "N/A";
+        const now = Date.now();
+        const then = new Date(date).getTime();
+        const diffMs = now - then;
+
+        if (diffMs < 0) return "just started";
+
+        const seconds = Math.floor(diffMs / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+
+        if (seconds < 60) return `running for ${seconds}s`;
+        if (minutes < 60) return `running for ${minutes}m`;
+        return `running for ${hours}h ${minutes % 60}m`;
     }
 
     // Commit hash from SHA or extract from ref name
@@ -69,13 +84,19 @@
         return null;
     });
 
-    // Duration calculated from timestamps
-    let duration = $derived(formatDuration(lastExecuted, finishedAt));
+    // Time info for clock icon
+    let isRunning = $derived(state === "running" || state === "pending");
+    let duration = $derived(
+        isRunning
+            ? formatElapsed(lastExecuted)
+            : formatTimeAgo(updatedAt || lastExecuted)
+    );
 
     // Dynamic border color based on status
     let borderColorClass = $derived(
         state === "success" ? "border-l-green-500" :
         state === "failed" ? "border-l-red-500" :
+        state === "blocked" || state === "manual" ? "border-l-gray-400" :
         "border-l-yellow-500"
     );
 </script>
@@ -90,7 +111,7 @@
     transition-colors
 ">
     <!-- Status Badge -->
-    <div class="flex-shrink-0">
+    <div class="flex-shrink-0 w-[100px]">
         {#if state === "success"}
             <div class="flex items-center gap-1.5 bg-green-50 text-green-600 px-2.5 py-1 rounded text-xs font-medium uppercase">
                 <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -104,6 +125,20 @@
                     <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
                 </svg>
                 Failed
+            </div>
+        {:else if state === "blocked" || state === "manual"}
+            <div class="flex items-center gap-1.5 bg-gray-100 text-gray-500 px-2.5 py-1 rounded text-xs font-medium uppercase">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                </svg>
+                Blocked
+            </div>
+        {:else if state === "skipped" || state === "canceled"}
+            <div class="flex items-center gap-1.5 bg-gray-100 text-gray-400 px-2.5 py-1 rounded text-xs font-medium uppercase">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+                </svg>
+                {state === "skipped" ? "Skipped" : "Canceled"}
             </div>
         {:else}
             <div class="flex items-center gap-1.5 bg-yellow-50 text-yellow-600 px-2.5 py-1 rounded text-xs font-medium uppercase">
@@ -124,7 +159,7 @@
             {#if source}
             <div class="flex items-center gap-1.5">
                 <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                    <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
                 </svg>
                 <span>{source}</span>
             </div>
@@ -132,8 +167,8 @@
             <!-- Commit Hash -->
             {#if commitHash}
             <div class="flex items-center gap-1.5">
-                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="22.95" y2="12"/>
                 </svg>
                 <span class="font-mono">{commitHash}</span>
             </div>
