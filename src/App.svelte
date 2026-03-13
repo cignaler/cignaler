@@ -1,163 +1,136 @@
 <script lang="ts">
-  import {
-    Button,
-    SpeedDial,
-    SpeedDialButton,
-    Modal,
-    Label,
-    Input,
-  } from "flowbite-svelte";
+  import ToastContainer from "./lib/components/ui/ToastContainer.svelte";
   import Pipelines from "./lib/Pipelines.svelte";
-  import Configs from "./lib/Configs.svelte";
-  import { Icon } from "flowbite-svelte-icons";
-  import { invoke } from "@tauri-apps/api/core";
+  import WatchersSidebar from "./lib/WatchersSidebar.svelte";
+  import { deleteWatcher, loadWatchers, serversState, watchersState, loadServers, initWatcherAddedListener, type ProjectWatcher } from "./lib/stores/watchers.svelte";
+  import { toast } from "./lib/stores/toast.svelte";
+  import { initPipelineListener } from "./lib/stores/pipelines.svelte";
 
-  let tabValue = "pipelines";
-  $: activeTab = tabValue;
+  let selectedWatcherId = $state<number | null>(null);
+  let watcherModalOpen = $state(false);
+  let editingWatcher = $state<ProjectWatcher | null>(null);
+  let preferencesModalState = $state(false);
 
-  let defaultModal = false;
-  $: modalState = defaultModal;
+  // Confirm dialog state for watcher deletion
+  let confirmDeleteWatcherOpen = $state(false);
+  let watcherToDelete = $state<ProjectWatcher | null>(null);
+  let deletingWatcherId = $state<number | null>(null);
 
-  // Form data for the modal
-  let serverName = "";
-  let serverUrl = "";
-  let apiToken = "";
-  let serverType = "gitlab";
-  
-  // Refresh trigger for CI servers list
-  let configRefreshTrigger = 0;
+  // Load watchers and servers on app startup, and start event listeners
+  $effect(() => {
+    Promise.all([loadWatchers(), loadServers()]);
+    initPipelineListener();
+    initWatcherAddedListener();
+  });
 
-  function setPipelinesActive() {
-    tabValue = "pipelines";
+  function handleSelectWatcher(id: number) {
+    selectedWatcherId = id;
   }
 
-  function setConfigActive() {
-    tabValue = "ci_servers";
-  }
+  // Auto-select first watcher when available
+  $effect(() => {
+    const watchers = watchersState.watchers;
+    if (watchers.length > 0 && selectedWatcherId === null) {
+      const firstWatcher = watchers[0];
+      if (firstWatcher) {
+        selectedWatcherId = firstWatcher.id;
+      }
+    }
+  });
 
-  function showModal() {
-    modalState = true;
-  }
-
-  function clearForm() {
-    serverName = "";
-    serverUrl = "";
-    apiToken = "";
-    serverType = "gitlab";
-  }
-
-  async function saveConfig() {
-    if (!serverName.trim() || !serverUrl.trim() || !apiToken.trim()) {
-      alert("Please fill in all required fields");
+  function showAddWatcherModal() {
+    // Prevent opening if no servers configured
+    if (serversState.servers.length === 0) {
+      toast.warning("Please add a CI server in Preferences first");
+      preferencesModalState = true;
       return;
     }
 
+    editingWatcher = null;
+    watcherModalOpen = true;
+  }
+
+  function showEditWatcherModal(watcher: ProjectWatcher) {
+    editingWatcher = watcher;
+    watcherModalOpen = true;
+  }
+
+  function showPreferencesModal() {
+    preferencesModalState = true;
+  }
+
+  function handleDeleteWatcher(watcher: ProjectWatcher) {
+    watcherToDelete = watcher;
+    confirmDeleteWatcherOpen = true;
+  }
+
+  async function confirmDeleteWatcher() {
+    if (!watcherToDelete) return;
+
+    const watcher = watcherToDelete;
+    deletingWatcherId = watcher.id;
+
     try {
-      await invoke("store_ci_server_data", {
-        name: serverName.trim(),
-        serverType: serverType,
-        urlString: serverUrl.trim(),
-        apiKey: apiToken.trim(),
-      });
-      
-      modalState = false;
-      clearForm();
-      configRefreshTrigger += 1; // Trigger refresh of CI servers list
-      alert("CI server added successfully!");
+      await deleteWatcher(watcher.id);
+      // If we deleted the selected watcher, clear selection
+      if (selectedWatcherId === watcher.id) {
+        selectedWatcherId = null;
+      }
+      toast.success(`Watcher "${watcher.name}" deleted successfully`);
     } catch (error) {
-      console.error("Failed to save CI server:", error);
-      alert("Failed to save CI server: " + error);
+      console.error("Failed to delete watcher:", error);
+      toast.error("Failed to delete watcher: " + error);
+    } finally {
+      deletingWatcherId = null;
+      watcherToDelete = null;
     }
   }
 </script>
 
-<main>
-  <div class="flex justify-between mt-4 mx-6 mb-4">
-    <div class="flex basis-1/4">
-      <Button
-        outline={activeTab !== "pipelines"}
-        on:click={setPipelinesActive}
-        class="mr-4">Pipelines</Button
-      >
-      <Button
-        outline={activeTab !== "ci_servers"}
-        on:click={setConfigActive}
-        class="w-28">CI Servers</Button
-      >
-    </div>
-    <div class="flex">
-      <SpeedDial
-        defaultClass="absolute right-6 top-2"
-        placement="left"
-        tooltip="left"
-      >
-        <SpeedDialButton name="Add new pipeline watcher" tooltip="left">
-          <Icon name="code-pull-request-solid" class="w-5 h-5" />
-        </SpeedDialButton>
-        <SpeedDialButton
-          name="Add new CI server"
-          tooltip="left"
-          on:click={showModal}
-        >
-          <Icon name="user-settings-solid" class="w-5 h-5" />
-        </SpeedDialButton>
-      </SpeedDial>
-    </div>
-  </div>
-  <div class="main-content">
-    {#if activeTab === "pipelines"}
-      <Pipelines />
-    {:else if activeTab === "ci_servers"}
-      <Configs refreshTrigger={configRefreshTrigger} />
-    {/if}
-    <Modal title="Add new CI server" bind:open={modalState} autoclose>
-      <div class="mb-6">
-        <Label for="server-name" class="block mb-2">Server Name *</Label>
-        <Input 
-          type="text" 
-          id="server-name" 
-          placeholder="e.g., My GitLab Server" 
-          bind:value={serverName}
-          required
-        />
-      </div>
-      <div class="mb-6">
-        <Label for="server-url" class="block mb-2">Server URL *</Label>
-        <Input 
-          type="url" 
-          id="server-url" 
-          placeholder="https://gitlab.example.com" 
-          bind:value={serverUrl}
-          required
-        />
-      </div>
-      <div class="mb-6">
-        <Label for="api-token" class="block mb-2">API Token *</Label>
-        <Input 
-          type="password" 
-          id="api-token" 
-          placeholder="glpat-xxxxxxxxxxxxxxxxxxxx" 
-          bind:value={apiToken}
-          required
-        />
-      </div>
-      <div class="mb-6">
-        <Label for="server-type" class="block mb-2">Server Type</Label>
-        <select 
-          id="server-type" 
-          bind:value={serverType}
-          class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
-        >
-          <option value="gitlab">GitLab</option>
-          <option value="github">GitHub</option>
-          <option value="jenkins">Jenkins</option>
-        </select>
-      </div>
+<main class="flex h-screen bg-gray-50">
+  <!-- Sidebar -->
+  <WatchersSidebar
+    onadd={showAddWatcherModal}
+    onedit={showEditWatcherModal}
+    ondelete={handleDeleteWatcher}
+    selectedWatcherId={selectedWatcherId}
+    onselect={handleSelectWatcher}
+  />
 
-      <svelte:fragment slot="footer">
-        <Button on:click={saveConfig}>Add Server</Button>
-        <Button color="alternative" on:click={() => modalState = false}>Cancel</Button>
-      </svelte:fragment>
-    </Modal>
+  <!-- Main Content -->
+  <div class="flex-1 flex flex-col overflow-hidden">
+    <Pipelines selectedWatcherId={selectedWatcherId} onpreferences={showPreferencesModal} />
   </div>
+
+  <!-- Add/Edit Pipeline Watcher Modal (lazy) -->
+  {#if watcherModalOpen}
+    {#await import("./lib/WatcherModal.svelte") then { default: WatcherModal }}
+      <WatcherModal bind:open={watcherModalOpen} editingWatcher={editingWatcher} />
+    {/await}
+  {/if}
+
+  <!-- Preferences Modal (lazy) -->
+  {#if preferencesModalState}
+    {#await import("./lib/PreferencesModal.svelte") then { default: PreferencesModal }}
+      <PreferencesModal bind:open={preferencesModalState} />
+    {/await}
+  {/if}
+
+  <!-- Confirm Delete Watcher Dialog (lazy) -->
+  {#if confirmDeleteWatcherOpen}
+    {#await import("./lib/components/ui/ConfirmDialog.svelte") then { default: ConfirmDialog }}
+      <ConfirmDialog
+        bind:open={confirmDeleteWatcherOpen}
+        title="Delete Watcher"
+        message={`Are you sure you want to delete the watcher "${watcherToDelete?.name}"?`}
+        confirmText="Delete"
+        variant="danger"
+        loading={deletingWatcherId !== null}
+        onconfirm={confirmDeleteWatcher}
+      />
+    {/await}
+  {/if}
+
+  <!-- Toast Container -->
+  <ToastContainer />
 </main>

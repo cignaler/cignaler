@@ -1,68 +1,189 @@
 pub mod database {
+    use crate::error::{CignalerError, Result};
     use crate::CiServer;
-    use rusqlite::{Connection, Result};
+    use r2d2::{Pool, PooledConnection};
+    use r2d2_sqlite::SqliteConnectionManager;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::sync::OnceLock;
+    use tracing::{debug, info};
 
-    static PATH: &'static str = "cignaler.db";
+    static DB_POOL: OnceLock<Pool<SqliteConnectionManager>> = OnceLock::new();
 
-    pub fn init_db() -> Result<()> {
-        let conn = Connection::open(PATH)?;
+    fn get_connection() -> Result<PooledConnection<SqliteConnectionManager>> {
+        DB_POOL
+            .get()
+            .ok_or_else(|| CignalerError::Config("Database pool not initialized".into()))?
+            .get()
+            .map_err(CignalerError::from)
+    }
 
-        conn.execute(
-            "create table if not exists ci_servers (
-             name text not null primary key,
-             server_type text not null,
-             url_string text not null,
-             api_key text not null
-         )",
-            {},
-        )?;
-        conn.execute(
-            "create table if not exists projects (
-             id integer primary key,
-             name text not null,
-             ci_server_name text not null,
-             project_path text not null,
-             default_branch text,
-             enabled boolean default 1,
-             foreign key (ci_server_name) references ci_servers(name)
-         )",
-            {},
-        )?;
+    pub fn init_db(app_data_dir: PathBuf) -> Result<()> {
+        if !app_data_dir.exists() {
+            fs::create_dir_all(&app_data_dir)
+                .map_err(|e| CignalerError::Config(format!("Failed to create app data dir: {}", e)))?;
+        }
+        let db_path = app_data_dir.join("cignaler.db");
+        info!("Initializing database at: {:?}", db_path);
 
-        conn.close()
-            .inspect_err(|err| println!("DB initialization failed: {err:#?}"));
+        let manager = SqliteConnectionManager::file(&db_path);
+        let pool = Pool::builder()
+            .max_size(10)
+            .build(manager)
+            .map_err(|e| CignalerError::Config(format!("Failed to create connection pool: {}", e)))?;
 
-        println!("create_db success");
+        // Initialize schema using a connection from the pool
+        {
+            let conn = pool.get()?;
+
+            // Enable foreign key support
+            conn.execute("PRAGMA foreign_keys = ON", [])?;
+
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS ci_servers (
+                    name TEXT NOT NULL PRIMARY KEY,
+                    server_type TEXT NOT NULL,
+                    url_string TEXT NOT NULL,
+                    api_key TEXT NOT NULL
+                )",
+                [],
+            )?;
+
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS projects (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    ci_server_name TEXT NOT NULL,
+                    project_path TEXT NOT NULL,
+                    default_branch TEXT,
+                    enabled BOOLEAN DEFAULT 1,
+                    FOREIGN KEY (ci_server_name) REFERENCES ci_servers(name) ON DELETE CASCADE
+                )",
+                [],
+            )?;
+
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS cached_pipelines (
+                    project_id INTEGER PRIMARY KEY,
+                    pipelines_json TEXT NOT NULL,
+                    last_updated TEXT NOT NULL,
+                    error TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )",
+                [],
+            )?;
+
+            // Run migrations
+            migrate_db(&conn)?;
+        }
+
+        DB_POOL
+            .set(pool)
+            .map_err(|_| CignalerError::Config("Database pool already initialized".into()))?;
+
+        info!("Database initialized successfully");
         Ok(())
     }
+
+    fn migrate_db(conn: &rusqlite::Connection) -> Result<()> {
+        let version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        debug!("Current database version: {}", version);
+
+        if version < 1 {
+            info!("Running migration to version 1: Adding ON DELETE CASCADE");
+
+            // Check if we need to migrate (old table without CASCADE)
+            let table_info: String = conn.query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='projects'",
+                [],
+                |row| row.get(0),
+            ).unwrap_or_default();
+
+            if !table_info.contains("ON DELETE CASCADE") && !table_info.is_empty() {
+                conn.execute_batch(
+                    "PRAGMA foreign_keys=OFF;
+
+                    CREATE TABLE IF NOT EXISTS projects_new (
+                        id INTEGER PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        ci_server_name TEXT NOT NULL,
+                        project_path TEXT NOT NULL,
+                        default_branch TEXT,
+                        enabled BOOLEAN DEFAULT 1,
+                        FOREIGN KEY (ci_server_name) REFERENCES ci_servers(name) ON DELETE CASCADE
+                    );
+
+                    INSERT OR IGNORE INTO projects_new SELECT * FROM projects;
+                    DROP TABLE IF EXISTS projects;
+                    ALTER TABLE projects_new RENAME TO projects;
+
+                    PRAGMA foreign_keys=ON;"
+                )?;
+                info!("Migration to version 1 completed");
+            }
+
+            conn.execute("PRAGMA user_version = 1", [])?;
+        }
+
+        Ok(())
+    }
+
     pub fn save_ci_server_data(
         name: String,
         server_type: String,
         url_string: String,
         api_key: String,
     ) -> Result<()> {
-        let conn = Connection::open(PATH)?;
+        let conn = get_connection()?;
+        debug!("Saving CI server: name={}, type={}", name, server_type);
 
         conn.execute(
-            "insert into ci_servers (name, server_type, url_string, api_key) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO ci_servers (name, server_type, url_string, api_key) VALUES (?1, ?2, ?3, ?4)",
             (&name, &server_type, &url_string, &api_key),
-        ).inspect_err(|e| println!("failed to store: {}", e));
+        )?;
 
-        conn.close()
-            .inspect_err(|err| println!("DB initialization failed: {err:#?}"));
+        info!("CI server '{}' saved successfully", name);
+        Ok(())
+    }
 
+    pub fn update_ci_server_data(
+        name: String,
+        server_type: String,
+        url_string: String,
+        api_key: String,
+    ) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Updating CI server: name={}", name);
+
+        conn.execute(
+            "UPDATE ci_servers SET server_type = ?1, url_string = ?2, api_key = ?3 WHERE name = ?4",
+            (&server_type, &url_string, &api_key, &name),
+        )?;
+
+        info!("CI server '{}' updated successfully", name);
         Ok(())
     }
 
     pub fn read_ci_servers_data() -> Result<Vec<CiServer>> {
-        let conn = Connection::open(PATH)?;
-        let mut servers = Vec::new();
-        conn.prepare("select name, server_type, url_string, api_key from ci_servers")
-            .unwrap()
+        let conn = get_connection()?;
+        let mut stmt = conn.prepare("SELECT name, server_type, url_string, api_key FROM ci_servers")?;
+        let servers = stmt
             .query_map([], |row| CiServer::from_row(row))?
-            .for_each(|x| servers.push(x.unwrap()));
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
+        debug!("Read {} CI servers from database", servers.len());
         Ok(servers)
+    }
+
+    pub fn delete_ci_server_data(name: String) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Deleting CI server: name={}", name);
+
+        // Foreign key cascade will automatically delete associated projects
+        conn.execute("DELETE FROM ci_servers WHERE name = ?1", (&name,))?;
+
+        info!("CI server '{}' deleted successfully (with cascaded projects)", name);
+        Ok(())
     }
 
     pub fn save_project_data(
@@ -71,26 +192,149 @@ pub mod database {
         project_path: String,
         default_branch: Option<String>,
     ) -> Result<()> {
-        let conn = Connection::open(PATH)?;
+        let conn = get_connection()?;
+        debug!("Saving project: name={}, server={}", name, ci_server_name);
 
         conn.execute(
-            "insert into projects (name, ci_server_name, project_path, default_branch) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO projects (name, ci_server_name, project_path, default_branch) VALUES (?1, ?2, ?3, ?4)",
             (&name, &ci_server_name, &project_path, &default_branch),
-        ).inspect_err(|e| println!("failed to store project: {}", e))?;
+        )?;
 
-        conn.close()
-            .inspect_err(|err| println!("DB close failed: {err:#?}"));
-
+        info!("Project '{}' saved successfully", name);
         Ok(())
     }
 
     pub fn read_projects_data() -> Result<Vec<crate::CiProject>> {
-        let conn = Connection::open(PATH)?;
-        let mut projects = Vec::new();
-        conn.prepare("select id, name, ci_server_name, project_path, default_branch, enabled from projects")?
+        let conn = get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, ci_server_name, project_path, default_branch, enabled FROM projects",
+        )?;
+        let projects = stmt
             .query_map([], |row| crate::CiProject::from_row(row))?
-            .for_each(|x| projects.push(x.unwrap()));
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
+        debug!("Read {} projects from database", projects.len());
         Ok(projects)
+    }
+
+    pub fn update_project_data(
+        id: i64,
+        name: String,
+        ci_server_name: String,
+        project_path: String,
+        default_branch: Option<String>,
+    ) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Updating project: id={}, name={}", id, name);
+
+        conn.execute(
+            "UPDATE projects SET name = ?1, ci_server_name = ?2, project_path = ?3, default_branch = ?4 WHERE id = ?5",
+            (&name, &ci_server_name, &project_path, &default_branch, &id),
+        )?;
+
+        info!("Project '{}' (id={}) updated successfully", name, id);
+        Ok(())
+    }
+
+    pub fn update_project_enabled(id: i64, enabled: bool) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Updating project enabled state: id={}, enabled={}", id, enabled);
+
+        conn.execute(
+            "UPDATE projects SET enabled = ?1 WHERE id = ?2",
+            (enabled, id),
+        )?;
+
+        info!("Project id={} enabled state set to {}", id, enabled);
+        Ok(())
+    }
+
+    pub fn delete_project_data(id: i64) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Deleting project: id={}", id);
+
+        conn.execute("DELETE FROM projects WHERE id = ?1", (&id,))?;
+
+        info!("Project id={} deleted successfully", id);
+        Ok(())
+    }
+
+    #[derive(Debug)]
+    pub struct CachedPipelineRow {
+        pub project_id: i64,
+        pub pipelines_json: String,
+        pub last_updated: String,
+        pub error: Option<String>,
+    }
+
+    pub fn save_cached_pipelines(
+        project_id: i64,
+        pipelines_json: &str,
+        last_updated: &str,
+        error: Option<&str>,
+    ) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Saving cached pipelines for project_id={}", project_id);
+
+        conn.execute(
+            "INSERT INTO cached_pipelines (project_id, pipelines_json, last_updated, error)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(project_id) DO UPDATE SET
+                pipelines_json = COALESCE(?2, cached_pipelines.pipelines_json),
+                last_updated = ?3,
+                error = ?4",
+            rusqlite::params![project_id, pipelines_json, last_updated, error],
+        )?;
+
+        debug!("Cached pipelines saved for project_id={}", project_id);
+        Ok(())
+    }
+
+    pub fn save_cached_pipelines_error(
+        project_id: i64,
+        last_updated: &str,
+        error: &str,
+    ) -> Result<()> {
+        let conn = get_connection()?;
+        debug!("Saving pipeline error for project_id={}: {}", project_id, error);
+
+        // If a row exists, only update error and timestamp, preserving pipelines_json
+        let updated = conn.execute(
+            "UPDATE cached_pipelines SET last_updated = ?1, error = ?2 WHERE project_id = ?3",
+            rusqlite::params![last_updated, error, project_id],
+        )?;
+
+        if updated == 0 {
+            // No existing row — insert with empty pipelines
+            conn.execute(
+                "INSERT INTO cached_pipelines (project_id, pipelines_json, last_updated, error)
+                 VALUES (?1, '[]', ?2, ?3)",
+                rusqlite::params![project_id, last_updated, error],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn read_cached_pipelines(project_id: i64) -> Result<Option<CachedPipelineRow>> {
+        let conn = get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT project_id, pipelines_json, last_updated, error FROM cached_pipelines WHERE project_id = ?1"
+        )?;
+
+        let row = stmt.query_row(rusqlite::params![project_id], |row| {
+            Ok(CachedPipelineRow {
+                project_id: row.get(0)?,
+                pipelines_json: row.get(1)?,
+                last_updated: row.get(2)?,
+                error: row.get(3)?,
+            })
+        });
+
+        match row {
+            Ok(r) => Ok(Some(r)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(CignalerError::Database(e)),
+        }
     }
 }

@@ -14,23 +14,29 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "icons/tray-success.png",
+      "icons/tray-failed.png",
+      "icons/tray-pending.png"
     ]
   },
   "productName": "cignaler",
   "mainBinaryName": "cignaler",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "identifier": "com.ostwi.dev",
   "plugins": {},
   "app": {
     "withGlobalTauri": false,
     "windows": [
       {
+        "visible": false,
         "fullscreen": false,
         "resizable": true,
         "title": "cignaler",
-        "width": 800,
-        "height": 600,
-        "closable": false
+        "width": 1400,
+        "height": 800,
+        "closable": true
       }
     ],
     "security": {
