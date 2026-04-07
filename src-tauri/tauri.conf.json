@@ -19,7 +19,10 @@
       "icons/tray-success.png",
       "icons/tray-failed.png",
       "icons/tray-pending.png"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    }
   },
   "productName": "cignaler",
   "mainBinaryName": "cignaler",
