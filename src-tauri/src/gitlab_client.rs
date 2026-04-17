@@ -131,22 +131,41 @@ pub mod gitlab_client {
         project_name: &str,
         ci_server: &CiServer,
     ) -> Result<Vec<String>, String> {
+        use gitlab::api::projects::repository::branches::Branches;
+        use gitlab::api::projects::repository::tags::Tags;
+
+        #[derive(Deserialize)]
+        struct NamedRef {
+            name: String,
+        }
+
         debug!("Fetching references for project '{}'", project_name);
 
         let client = create_gitlab_client(ci_server)?;
         let project_name = project_name.to_string();
 
         with_retry("get_references", move || {
-            let req = Pipelines::builder()
+            let branches_req = Branches::builder()
                 .project(&project_name)
                 .build()
-                .map_err(|e| format!("Failed to build pipeline query: {}", e))?;
-
-            let refs: Vec<PipelineData> = api::paged(req, api::Pagination::Limit(500))
+                .map_err(|e| format!("Failed to build branches query: {}", e))?;
+            let branches: Vec<NamedRef> = api::paged(branches_req, api::Pagination::Limit(500))
                 .query(&client)
-                .map_err(|e| format!("Failed to query pipeline references: {}", e))?;
+                .map_err(|e| format!("Failed to query branches: {}", e))?;
 
-            let refs_set: HashSet<String> = refs.into_iter().map(|x| x.r#ref).collect();
+            let tags_req = Tags::builder()
+                .project(&project_name)
+                .build()
+                .map_err(|e| format!("Failed to build tags query: {}", e))?;
+            let tags: Vec<NamedRef> = api::paged(tags_req, api::Pagination::Limit(500))
+                .query(&client)
+                .map_err(|e| format!("Failed to query tags: {}", e))?;
+
+            let refs_set: HashSet<String> = branches
+                .into_iter()
+                .chain(tags)
+                .map(|r| r.name)
+                .collect();
             let mut refs_list: Vec<_> = refs_set.into_iter().collect();
             refs_list.sort();
 

@@ -41,6 +41,10 @@
             : options
     );
 
+    const MAX_VISIBLE = 50;
+    let visibleOptions = $derived(filteredOptions.slice(0, MAX_VISIBLE));
+    let hasMore = $derived(filteredOptions.length > MAX_VISIBLE);
+
     // IDs for accessibility
     let inputId = $derived(id || `combobox-${Math.random().toString(36).slice(2)}`);
     let listId = $derived(`${inputId}-list`);
@@ -240,7 +244,7 @@
                     class="py-1 max-h-60 overflow-auto"
                     role="listbox"
                 >
-                    {#each filteredOptions as option, index (option)}
+                    {#each visibleOptions as option, index (option)}
                         <li
                             id="{listId}-option-{index}"
                             role="option"
@@ -268,6 +272,11 @@
                             </button>
                         </li>
                     {/each}
+                    {#if hasMore}
+                        <li class="px-3 py-2 text-xs text-gray-400 text-center border-t border-gray-100" role="option" aria-selected={false}>
+                            Showing {MAX_VISIBLE} of {filteredOptions.length} — type to narrow results
+                        </li>
+                    {/if}
                 </ul>
             {/if}
         </div>

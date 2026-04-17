@@ -70,6 +70,8 @@ export const refsCacheState = $state({
     errors: {} as Record<string, string>
 });
 
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
 // Helper to generate cache key
 function getRefsCacheKey(ciServerName: string, projectPath: string): string {
     return `${ciServerName}:${projectPath}`;
@@ -109,10 +111,11 @@ export async function loadRefs(
     }
 
     // If we have cache and not forcing refresh, return it
-    // But still trigger a background refresh
+    // Trigger background refresh only if cache is stale
     if (cached && !forceRefresh) {
-        // Trigger background refresh (don't await)
-        refreshRefsInBackground(ciServerName, projectPath);
+        if (Date.now() - cached.timestamp >= CACHE_TTL_MS) {
+            refreshRefsInBackground(ciServerName, projectPath);
+        }
         return cached.refs;
     }
 
@@ -154,12 +157,12 @@ async function fetchRefs(ciServerName: string, projectPath: string): Promise<str
 export function refreshRefsInBackground(ciServerName: string, projectPath: string): void {
     const key = getRefsCacheKey(ciServerName, projectPath);
 
-    // Don't refresh if already loading
-    if (refsCacheState.loading.has(key)) {
-        return;
-    }
+    if (refsCacheState.loading.has(key)) return;
 
-    // Fire and forget
+    // Don't refresh if cache is still fresh
+    const cached = refsCache[key];
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) return;
+
     fetchRefs(ciServerName, projectPath).catch(console.error);
 }
 

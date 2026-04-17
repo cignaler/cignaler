@@ -1,7 +1,7 @@
 {
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "cargo build --manifest-path src-tauri/Cargo.toml --features skip-tauri-build --bin cignaler-native-host && node scripts/stage-native-host.mjs debug && npm run dev",
+    "beforeBuildCommand": "cargo build --manifest-path src-tauri/Cargo.toml --release --features skip-tauri-build --bin cignaler-native-host && node scripts/stage-native-host.mjs && npm run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
@@ -19,6 +19,9 @@
       "icons/tray-success.png",
       "icons/tray-failed.png",
       "icons/tray-pending.png"
+    ],
+    "externalBin": [
+      "binaries/cignaler-native-host"
     ],
     "macOS": {
       "signingIdentity": "-"

@@ -227,7 +227,7 @@ fn trigger_poll(app: AppHandle, watcher_id: i64) -> Result<(), String> {
     Ok(())
 }
 
-const CHROME_EXTENSION_ID: &str = "mnpadnofpbfgbomckhchncfeepeooifd";
+const CHROME_EXTENSION_ID: &str = "cfggfimeknbkdnknnfhbfggdpkbilied";
 
 fn register_native_messaging_host() {
     let host_binary = match std::env::current_exe() {
@@ -244,6 +244,23 @@ fn register_native_messaging_host() {
             host_binary
         );
         return;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&host_binary) {
+            let mut perms = meta.permissions();
+            perms.set_mode(perms.mode() | 0o111);
+            let _ = fs::set_permissions(&host_binary, perms);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("xattr")
+            .args(["-d", "com.apple.quarantine"])
+            .arg(&host_binary)
+            .output();
     }
 
     let manifest_dir = match dirs::data_dir() {

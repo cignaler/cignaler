@@ -15,7 +15,8 @@
         options = [],
         placeholder = 'Select an option',
         disabled = false,
-        class: className = ''
+        class: className = '',
+        onchange = undefined
     }: {
         id?: string;
         value?: string;
@@ -23,6 +24,7 @@
         placeholder?: string;
         disabled?: boolean;
         class?: string;
+        onchange?: () => void;
     } = $props();
 
     let open = $state(false);
@@ -40,6 +42,7 @@
         if (!option.disabled) {
             value = option.value;
             open = false;
+            onchange?.();
         }
     }
 

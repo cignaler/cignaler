@@ -43,3 +43,7 @@ dirs = "6"
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+# Skips tauri_build::build() when pre-building the native host binary in beforeBuildCommand.
+# This breaks the circular dependency: externalBin check requires the binary to exist,
+# but the binary can't be built without passing that check first.
+skip-tauri-build = []

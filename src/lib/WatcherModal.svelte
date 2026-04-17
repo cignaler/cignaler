@@ -50,7 +50,6 @@
 
     // UI state
     let saving = $state(false);
-    let refsInitialized = $state(false);
 
     // Derived state
     let isEditing = $derived(editingWatcher !== null);
@@ -107,7 +106,6 @@
             projectPath: '',
             tag: ''
         };
-        refsInitialized = false;
     }
 
     function populateFromWatcher(watcher: ProjectWatcher) {
@@ -123,7 +121,6 @@
             projectPath: '',
             tag: ''
         };
-        refsInitialized = true; // Don't auto-load when editing
     }
 
     function validateForm(): boolean {
@@ -238,19 +235,6 @@
         }
     });
 
-    // Auto-load refs when server or project path changes (only for new watchers)
-    $effect(() => {
-        const server = form.ciServer;
-        const path = form.projectPath;
-
-        // Skip if editing or if not yet initialized
-        if (isEditing && refsInitialized) return;
-
-        if (server && path.trim()) {
-            debouncedLoadRefs();
-        }
-    });
-
     // Cleanup on unmount
     $effect(() => {
         return () => {
@@ -320,6 +304,7 @@
                         bind:value={form.ciServer}
                         options={serverOptions}
                         placeholder="Select a CI server"
+                        onchange={() => { if (!isEditing && form.projectPath.trim()) debouncedLoadRefs(); }}
                     />
                     {#if errors.ciServer}
                         <p class="text-xs text-red-500 mt-1" role="alert">{errors.ciServer}</p>
@@ -341,6 +326,7 @@
                     error={errors.projectPath}
                     helpText="The project path as it appears in your CI server"
                     required
+                    oninput={() => { if (!isEditing) debouncedLoadRefs(); }}
                 />
             </div>
 

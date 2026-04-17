@@ -9,7 +9,8 @@
     list = undefined,
     error = '',
     helpText = '',
-    class: className = ''
+    class: className = '',
+    oninput = undefined
   }: {
     type?: 'text' | 'password' | 'email' | 'url' | 'number';
     id?: string;
@@ -21,6 +22,7 @@
     error?: string;
     helpText?: string;
     class?: string;
+    oninput?: (e: Event) => void;
   } = $props();
 
   // Generate IDs for accessibility
@@ -50,6 +52,7 @@
     {disabled}
     {required}
     {list}
+    {oninput}
     class={classes}
     aria-required={required ? 'true' : undefined}
     aria-invalid={error ? 'true' : undefined}
