@@ -21,7 +21,7 @@
     "classnames": "^2.3.2"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.1.17",
     "@tauri-apps/cli": "^2.0.4",
@@ -33,7 +33,7 @@
     "prettier-plugin-svelte": "^3.4.0",
     "prettier-plugin-tailwindcss": "^0.7.1",
     "publint": "^0.3.15",
-    "svelte": "5.53.11",
+    "svelte": "5.55.7",
     "svelte-check": "^4.3.4",
     "svelte-heros-v2": "^3.0.1",
     "svelte-preprocess": "^6.0.3",
