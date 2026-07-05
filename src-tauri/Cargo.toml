@@ -38,6 +38,7 @@ url = "2.5"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["time", "sync"] }
 dirs = "6"
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

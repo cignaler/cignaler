@@ -53,11 +53,12 @@
     viewState = 'add';
   }
 
-  function showEditForm(server: { name: string; server_type: string; url_string: string; api_key: string }) {
+  function showEditForm(server: { name: string; server_type: string; url_string: string }) {
     serverName = server.name;
     serverType = server.server_type;
     serverUrl = server.url_string;
-    serverApiKey = server.api_key;
+    // The token never leaves the backend — leave blank to keep the current one
+    serverApiKey = "";
     editingServerName = server.name;
     error = "";
     viewState = 'edit';
@@ -69,7 +70,9 @@
   }
 
   async function handleSave() {
-    if (!serverName.trim() || !serverUrl.trim() || !serverApiKey.trim()) {
+    // In edit mode a blank token means "keep the existing one"
+    const apiKeyRequired = viewState === 'add';
+    if (!serverName.trim() || !serverUrl.trim() || (apiKeyRequired && !serverApiKey.trim())) {
       error = "Please fill in all required fields";
       return;
     }
@@ -78,10 +81,15 @@
       saving = true;
       error = "";
 
+      let storedInKeyring = true;
       if (viewState === 'add') {
-        await addServer(serverName.trim(), serverType, serverUrl.trim(), serverApiKey.trim());
+        storedInKeyring = await addServer(serverName.trim(), serverType, serverUrl.trim(), serverApiKey.trim());
       } else if (viewState === 'edit' && editingServerName) {
-        await updateServer(editingServerName, serverType, serverUrl.trim(), serverApiKey.trim());
+        storedInKeyring = await updateServer(editingServerName, serverType, serverUrl.trim(), serverApiKey.trim());
+      }
+
+      if (!storedInKeyring) {
+        toast.warning("No system keyring found — the token is stored unencrypted on this machine");
       }
 
       backToList();
@@ -269,13 +277,15 @@
           </div>
 
           <div>
-            <Label for="server-api-key" class="block mb-2">API Key / Token *</Label>
+            <Label for="server-api-key" class="block mb-2">
+              API Key / Token {viewState === 'add' ? '*' : ''}
+            </Label>
             <Input
               type="password"
               id="server-api-key"
-              placeholder="Enter your API key or personal access token"
+              placeholder={viewState === 'edit' ? 'Leave blank to keep the current token' : 'Enter your API key or personal access token'}
               bind:value={serverApiKey}
-              required
+              required={viewState === 'add'}
             />
             <p class="text-xs text-gray-500 mt-1">
               {#if serverType === 'gitlab'}

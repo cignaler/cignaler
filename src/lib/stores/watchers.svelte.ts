@@ -11,18 +11,12 @@ let watcherAddedUnlisten: UnlistenFn | null = null;
 export async function initWatcherAddedListener(): Promise<void> {
     if (watcherAddedUnlisten) return;
 
-    watcherAddedUnlisten = await listen("watcher-added", async () => {
+    watcherAddedUnlisten = await listen<number>("watcher-added", async (event) => {
         console.log("Watcher added via native host, reloading watchers...");
         await loadWatchers();
 
-        // Trigger pipeline fetch for the newest watcher
-        const watchers = watchersState.watchers;
-        if (watchers.length > 0) {
-            const newestWatcher = watchers[watchers.length - 1];
-            if (newestWatcher) {
-                triggerManualRefresh(newestWatcher.id);
-            }
-        }
+        // Trigger pipeline fetch for the new watcher (payload is its id)
+        triggerManualRefresh(event.payload);
     });
 }
 
@@ -35,11 +29,12 @@ export interface ProjectWatcher {
     enabled: boolean;
 }
 
-interface CiServer {
+// Redacted server view — the API token never reaches the frontend.
+export interface CiServer {
     name: string;
     server_type: string;
     url_string: string;
-    api_key: string;
+    has_api_key: boolean;
 }
 
 interface RefsCache {
@@ -224,7 +219,7 @@ export async function addWatcher(
     projectPath: string,
     defaultBranch: string
 ) {
-    await invoke("store_project_data", {
+    const newId = await invoke<number>("store_project_data", {
         name,
         ciServerName,
         projectPath,
@@ -235,22 +230,19 @@ export async function addWatcher(
     await loadWatchers();
 
     // Trigger immediate pipeline fetch for the new watcher
-    const newWatcher = watchersState.watchers.find(
-        w => w.name === name && w.ci_server_name === ciServerName && w.project_path === projectPath
-    );
-    if (newWatcher) {
-        triggerManualRefresh(newWatcher.id);
-    }
+    triggerManualRefresh(newId);
 }
 
-// Add a new CI server and update state
+// Add a new CI server and update state.
+// Returns true when the token was stored in the OS keyring, false when it
+// fell back to unencrypted database storage.
 export async function addServer(
     name: string,
     serverType: string,
     urlString: string,
     apiKey: string
-) {
-    await invoke("store_ci_server_data", {
+): Promise<boolean> {
+    const storedInKeyring = await invoke<boolean>("store_ci_server_data", {
         name,
         serverType,
         urlString,
@@ -259,24 +251,28 @@ export async function addServer(
 
     // Reload servers to get the updated list
     await loadServers();
+    return storedInKeyring;
 }
 
-// Update a CI server and refresh state
+// Update a CI server and refresh state.
+// Pass a blank apiKey to keep the existing token.
+// Returns false only when a new token fell back to unencrypted storage.
 export async function updateServer(
     name: string,
     serverType: string,
     urlString: string,
     apiKey: string
-) {
-    await invoke("update_ci_server", {
+): Promise<boolean> {
+    const storedInKeyring = await invoke<boolean>("update_ci_server", {
         name,
         serverType,
         urlString,
-        apiKey
+        apiKey: apiKey.trim() === "" ? null : apiKey
     });
 
     // Reload servers to get the updated list
     await loadServers();
+    return storedInKeyring;
 }
 
 // Delete a CI server and refresh state

@@ -1,5 +1,6 @@
 pub mod database {
     use crate::error::{CignalerError, Result};
+    use crate::secrets;
     use crate::CiServer;
     use r2d2::{Pool, PooledConnection};
     use r2d2_sqlite::SqliteConnectionManager;
@@ -26,7 +27,10 @@ pub mod database {
         let db_path = app_data_dir.join("cignaler.db");
         info!("Initializing database at: {:?}", db_path);
 
-        let manager = SqliteConnectionManager::file(&db_path);
+        // foreign_keys is a per-connection pragma, so it must be set on every
+        // connection the pool opens — not just once at init.
+        let manager = SqliteConnectionManager::file(&db_path)
+            .with_init(|c| c.execute_batch("PRAGMA foreign_keys = ON;"));
         let pool = Pool::builder()
             .max_size(10)
             .build(manager)
@@ -35,9 +39,6 @@ pub mod database {
         // Initialize schema using a connection from the pool
         {
             let conn = pool.get()?;
-
-            // Enable foreign key support
-            conn.execute("PRAGMA foreign_keys = ON", [])?;
 
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS ci_servers (
@@ -75,6 +76,10 @@ pub mod database {
 
             // Run migrations
             migrate_db(&conn)?;
+
+            // Move any plaintext tokens into the OS keyring (best effort —
+            // rows that fail stay in the database and are retried next launch)
+            migrate_tokens_to_keyring(&conn);
         }
 
         DB_POOL
@@ -125,51 +130,130 @@ pub mod database {
             conn.execute("PRAGMA user_version = 1", [])?;
         }
 
+        if version < 2 {
+            info!("Running migration to version 2: Removing orphaned rows");
+
+            // Foreign keys were previously only enabled on the init connection,
+            // so cascades never fired on pooled connections and deletes could
+            // leave orphans behind. Clean them up now that FKs are enforced.
+            conn.execute_batch(
+                "DELETE FROM cached_pipelines WHERE project_id NOT IN (SELECT id FROM projects);
+                 DELETE FROM projects WHERE ci_server_name NOT IN (SELECT name FROM ci_servers);
+                 DELETE FROM cached_pipelines WHERE project_id NOT IN (SELECT id FROM projects);",
+            )?;
+
+            conn.execute("PRAGMA user_version = 2", [])?;
+            info!("Migration to version 2 completed");
+        }
+
         Ok(())
     }
 
+    /// Best-effort migration of plaintext tokens from the database into the
+    /// OS keyring. Rows are only rewritten after the keyring write succeeds.
+    fn migrate_tokens_to_keyring(conn: &rusqlite::Connection) {
+        let rows: Vec<(String, String)> = match conn
+            .prepare("SELECT name, api_key FROM ci_servers WHERE api_key != ?1 AND api_key != ''")
+            .and_then(|mut stmt| {
+                stmt.query_map([secrets::KEYRING_SENTINEL], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect()
+            }) {
+            Ok(r) => r,
+            Err(e) => {
+                debug!("Token migration skipped: {}", e);
+                return;
+            }
+        };
+
+        for (name, token) in rows {
+            if secrets::store_token(&name, &token) {
+                match conn.execute(
+                    "UPDATE ci_servers SET api_key = ?1 WHERE name = ?2",
+                    (secrets::KEYRING_SENTINEL, &name),
+                ) {
+                    Ok(_) => info!("Token for server '{}' moved to OS keyring", name),
+                    Err(e) => {
+                        // Keep the keyring copy; the sentinel rewrite is retried next launch
+                        debug!("Failed to mark token for '{}' as keyring-stored: {}", name, e);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Saves a CI server. Returns true when the token was stored in the OS
+    /// keyring, false when it fell back to plaintext database storage.
     pub fn save_ci_server_data(
         name: String,
         server_type: String,
         url_string: String,
         api_key: String,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let conn = get_connection()?;
         debug!("Saving CI server: name={}, type={}", name, server_type);
 
+        let in_keyring = secrets::store_token(&name, &api_key);
+        let stored_key = if in_keyring { secrets::KEYRING_SENTINEL } else { api_key.as_str() };
+
         conn.execute(
             "INSERT INTO ci_servers (name, server_type, url_string, api_key) VALUES (?1, ?2, ?3, ?4)",
-            (&name, &server_type, &url_string, &api_key),
+            (&name, &server_type, &url_string, stored_key),
         )?;
 
-        info!("CI server '{}' saved successfully", name);
-        Ok(())
+        info!("CI server '{}' saved successfully (keyring={})", name, in_keyring);
+        Ok(in_keyring)
     }
 
+    /// Updates a CI server. A `None` api_key keeps the existing token.
+    /// Returns true unless a new token had to fall back to database storage.
     pub fn update_ci_server_data(
         name: String,
         server_type: String,
         url_string: String,
-        api_key: String,
-    ) -> Result<()> {
+        api_key: Option<String>,
+    ) -> Result<bool> {
         let conn = get_connection()?;
         debug!("Updating CI server: name={}", name);
 
-        conn.execute(
-            "UPDATE ci_servers SET server_type = ?1, url_string = ?2, api_key = ?3 WHERE name = ?4",
-            (&server_type, &url_string, &api_key, &name),
-        )?;
+        let in_keyring = match &api_key {
+            Some(key) => {
+                let in_keyring = secrets::store_token(&name, key);
+                let stored_key = if in_keyring { secrets::KEYRING_SENTINEL } else { key.as_str() };
+                conn.execute(
+                    "UPDATE ci_servers SET server_type = ?1, url_string = ?2, api_key = ?3 WHERE name = ?4",
+                    (&server_type, &url_string, stored_key, &name),
+                )?;
+                in_keyring
+            }
+            None => {
+                conn.execute(
+                    "UPDATE ci_servers SET server_type = ?1, url_string = ?2 WHERE name = ?3",
+                    (&server_type, &url_string, &name),
+                )?;
+                true
+            }
+        };
 
         info!("CI server '{}' updated successfully", name);
-        Ok(())
+        Ok(in_keyring)
     }
 
     pub fn read_ci_servers_data() -> Result<Vec<CiServer>> {
         let conn = get_connection()?;
         let mut stmt = conn.prepare("SELECT name, server_type, url_string, api_key FROM ci_servers")?;
-        let servers = stmt
+        let mut servers = stmt
             .query_map([], |row| CiServer::from_row(row))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        // Resolve keyring-stored tokens; a failed lookup leaves the key empty
+        // and surfaces later as an auth error on the API call.
+        for server in &mut servers {
+            if server.api_key == secrets::KEYRING_SENTINEL {
+                server.api_key = secrets::get_token(&server.name).unwrap_or_default();
+            }
+        }
 
         debug!("Read {} CI servers from database", servers.len());
         Ok(servers)
@@ -181,17 +265,19 @@ pub mod database {
 
         // Foreign key cascade will automatically delete associated projects
         conn.execute("DELETE FROM ci_servers WHERE name = ?1", (&name,))?;
+        secrets::delete_token(&name);
 
         info!("CI server '{}' deleted successfully (with cascaded projects)", name);
         Ok(())
     }
 
+    /// Saves a project and returns its newly assigned id.
     pub fn save_project_data(
         name: String,
         ci_server_name: String,
         project_path: String,
         default_branch: Option<String>,
-    ) -> Result<()> {
+    ) -> Result<i64> {
         let conn = get_connection()?;
         debug!("Saving project: name={}, server={}", name, ci_server_name);
 
@@ -199,9 +285,10 @@ pub mod database {
             "INSERT INTO projects (name, ci_server_name, project_path, default_branch) VALUES (?1, ?2, ?3, ?4)",
             (&name, &ci_server_name, &project_path, &default_branch),
         )?;
+        let id = conn.last_insert_rowid();
 
-        info!("Project '{}' saved successfully", name);
-        Ok(())
+        info!("Project '{}' saved successfully (id={})", name, id);
+        Ok(id)
     }
 
     pub fn read_projects_data() -> Result<Vec<crate::CiProject>> {

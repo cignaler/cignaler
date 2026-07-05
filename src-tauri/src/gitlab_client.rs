@@ -18,7 +18,7 @@ pub mod gitlab_client {
         pub status: String,
         pub web_url: String,
         pub r#ref: String,
-        pub id: u32,
+        pub id: u64,
         pub created_at: Option<String>,
         pub updated_at: Option<String>,
         pub finished_at: Option<String>,
@@ -26,20 +26,56 @@ pub mod gitlab_client {
         pub source: Option<String>,
     }
 
-    fn extract_host(url_string: &str) -> Result<String, String> {
+    /// Validates a CI server URL. Called when a server is saved so a bad URL
+    /// fails immediately instead of on the first poll.
+    pub fn validate_server_url(url_string: &str) -> Result<(), String> {
         let url = Url::parse(url_string)
             .map_err(|e| format!("Invalid URL '{}': {}", url_string, e))?;
 
-        url.host_str()
-            .map(|s| s.to_string())
-            .ok_or_else(|| format!("URL '{}' has no host", url_string))
+        match url.scheme() {
+            "http" | "https" => {}
+            other => {
+                return Err(format!(
+                    "Unsupported URL scheme '{}' in '{}': use http or https",
+                    other, url_string
+                ))
+            }
+        }
+
+        if url.host_str().is_none() {
+            return Err(format!("URL '{}' has no host", url_string));
+        }
+
+        Ok(())
     }
 
     fn create_gitlab_client(ci_server: &CiServer) -> Result<Gitlab, String> {
-        let host = extract_host(&ci_server.url_string)?;
-        debug!("Creating GitLab client for host: {}", host);
+        let url = Url::parse(&ci_server.url_string)
+            .map_err(|e| format!("Invalid URL '{}': {}", ci_server.url_string, e))?;
 
-        Gitlab::new(&host, &ci_server.api_key)
+        let host = url
+            .host_str()
+            .ok_or_else(|| format!("URL '{}' has no host", ci_server.url_string))?;
+
+        // Preserve port and subpath so self-hosted instances like
+        // https://example.com:8443/gitlab work.
+        let mut endpoint = host.to_string();
+        if let Some(port) = url.port() {
+            endpoint.push_str(&format!(":{}", port));
+        }
+        let path = url.path().trim_end_matches('/');
+        if !path.is_empty() {
+            endpoint.push_str(path);
+        }
+
+        debug!("Creating GitLab client for endpoint: {}", endpoint);
+
+        let mut builder = Gitlab::builder(endpoint, &ci_server.api_key);
+        if url.scheme() == "http" {
+            builder.insecure();
+        }
+        builder
+            .build()
             .map_err(|e| format!("Failed to create GitLab client: {}", e))
     }
 

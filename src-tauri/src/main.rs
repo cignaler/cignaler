@@ -6,9 +6,11 @@ use cignaler::database::database::{
     read_ci_servers_data, read_projects_data, save_ci_server_data, save_project_data,
     update_ci_server_data, update_project_data, update_project_enabled,
 };
-use cignaler::gitlab_client::gitlab_client::{get_gitlab_pipelines, get_references, PipelineData};
+use cignaler::gitlab_client::gitlab_client::{
+    get_gitlab_pipelines, get_references, validate_server_url, PipelineData,
+};
 use cignaler::pipeline_cache::{poll_single_watcher, set_tray_icon, start_background_poller, update_tray_from_all_cached};
-use cignaler::{CiProject, CiServer};
+use cignaler::CiProject;
 use serde::Serialize;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
@@ -22,8 +24,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tracing::{debug, error, info, warn};
 
+// GitLab-touching commands are async and delegate to the blocking thread
+// pool — the network calls (and their retry sleeps) must never run on the
+// main thread, where they would freeze the UI.
 #[tauri::command]
-fn get_pipelines(
+async fn get_pipelines(
     ci_server_name: String,
     project_name: String,
     reference: String,
@@ -33,21 +38,25 @@ fn get_pipelines(
         ci_server_name, project_name, reference
     );
 
-    let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
 
-    let ci_server = servers
-        .iter()
-        .find(|server| server.name == ci_server_name)
-        .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
+        let ci_server = servers
+            .iter()
+            .find(|server| server.name == ci_server_name)
+            .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
 
-    if ci_server.server_type != "gitlab" {
-        return Err(format!(
-            "Server type '{}' not supported yet",
-            ci_server.server_type
-        ));
-    }
+        if ci_server.server_type != "gitlab" {
+            return Err(format!(
+                "Server type '{}' not supported yet",
+                ci_server.server_type
+            ));
+        }
 
-    get_gitlab_pipelines(&reference, &project_name, ci_server)
+        get_gitlab_pipelines(&reference, &project_name, ci_server)
+    })
+    .await
+    .map_err(|e| format!("Pipeline fetch task failed: {}", e))?
 }
 
 #[tauri::command]
@@ -56,19 +65,38 @@ fn store_ci_server_data(
     server_type: String,
     url_string: String,
     api_key: String,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     debug!(
         "Saving CI server data: name={}, type={}, url={}",
         name, server_type, url_string
     );
+    validate_server_url(&url_string)?;
     save_ci_server_data(name, server_type, url_string, api_key).map_err(|e| e.to_string())
 }
 
+/// Redacted view of a CI server for the frontend — the token never leaves
+/// the backend.
+#[derive(Serialize)]
+struct CiServerInfo {
+    name: String,
+    server_type: String,
+    url_string: String,
+    has_api_key: bool,
+}
+
 #[tauri::command]
-fn read_ci_servers() -> Result<Vec<CiServer>, String> {
+fn read_ci_servers() -> Result<Vec<CiServerInfo>, String> {
     let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
     debug!("Successfully loaded {} CI servers", servers.len());
-    Ok(servers)
+    Ok(servers
+        .into_iter()
+        .map(|s| CiServerInfo {
+            name: s.name,
+            server_type: s.server_type,
+            url_string: s.url_string,
+            has_api_key: !s.api_key.is_empty(),
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -76,12 +104,15 @@ fn update_ci_server(
     name: String,
     server_type: String,
     url_string: String,
-    api_key: String,
-) -> Result<(), String> {
+    api_key: Option<String>,
+) -> Result<bool, String> {
     debug!(
         "Updating CI server: name={}, type={}, url={}",
         name, server_type, url_string
     );
+    validate_server_url(&url_string)?;
+    // Treat a blank token as "keep the existing one"
+    let api_key = api_key.filter(|k| !k.trim().is_empty());
     update_ci_server_data(name, server_type, url_string, api_key).map_err(|e| e.to_string())
 }
 
@@ -92,7 +123,7 @@ fn delete_ci_server(name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_pipeline_references(
+async fn get_pipeline_references(
     ci_server_name: String,
     project_name: String,
 ) -> Result<Vec<String>, String> {
@@ -101,30 +132,35 @@ fn get_pipeline_references(
         ci_server_name, project_name
     );
 
-    let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let servers = read_ci_servers_data().map_err(|e| e.to_string())?;
 
-    let ci_server = servers
-        .iter()
-        .find(|server| server.name == ci_server_name)
-        .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
+        let ci_server = servers
+            .iter()
+            .find(|server| server.name == ci_server_name)
+            .ok_or_else(|| format!("CI server '{}' not found", ci_server_name))?;
 
-    if ci_server.server_type != "gitlab" {
-        return Err(format!(
-            "Server type '{}' not supported yet",
-            ci_server.server_type
-        ));
-    }
+        if ci_server.server_type != "gitlab" {
+            return Err(format!(
+                "Server type '{}' not supported yet",
+                ci_server.server_type
+            ));
+        }
 
-    get_references(&project_name, ci_server)
+        get_references(&project_name, ci_server)
+    })
+    .await
+    .map_err(|e| format!("Reference fetch task failed: {}", e))?
 }
 
+/// Saves a project watcher and returns its newly assigned id.
 #[tauri::command]
 fn store_project_data(
     name: String,
     ci_server_name: String,
     project_path: String,
     default_branch: Option<String>,
-) -> Result<(), String> {
+) -> Result<i64, String> {
     debug!(
         "Saving project data: name={}, server={}, path={}",
         name, ci_server_name, project_path
@@ -343,6 +379,15 @@ fn start_ipc_listener(app_handle: AppHandle) {
             }
         };
 
+        // Only this user may talk to the app through the socket
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Err(e) = fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600)) {
+                warn!("Failed to restrict IPC socket permissions: {}", e);
+            }
+        }
+
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
@@ -357,6 +402,47 @@ fn start_ipc_listener(app_handle: AppHandle) {
             }
         }
     });
+}
+
+fn ipc_error(message: String) -> String {
+    serde_json::json!({ "success": false, "error": message }).to_string()
+}
+
+/// Validate and persist an add-watcher request from the native host.
+fn handle_add_watcher(req: &NativeHostRequest, app_handle: &AppHandle) -> String {
+    // Reject watchers pointing at a CI server that doesn't exist
+    match read_ci_servers_data() {
+        Ok(servers) => {
+            if !servers.iter().any(|s| s.name == req.ci_server) {
+                warn!("IPC add-watcher rejected: unknown CI server '{}'", req.ci_server);
+                return ipc_error(format!("CI server '{}' not found", req.ci_server));
+            }
+        }
+        Err(e) => {
+            error!("Failed to read CI servers for IPC validation: {}", e);
+            return ipc_error(format!("Failed to read CI servers: {}", e));
+        }
+    }
+
+    match save_project_data(
+        req.name.clone(),
+        req.ci_server.clone(),
+        req.project.clone(),
+        Some(req.reference.clone()),
+    ) {
+        Ok(id) => {
+            info!("Watcher '{}' (id={}) added via IPC", req.name, id);
+            // Notify the UI, which uses the id to trigger an immediate poll
+            if let Err(e) = app_handle.emit("watcher-added", id) {
+                error!("Failed to emit watcher-added event: {}", e);
+            }
+            serde_json::json!({ "success": true }).to_string()
+        }
+        Err(e) => {
+            error!("Failed to save watcher: {}", e);
+            ipc_error(e.to_string())
+        }
+    }
 }
 
 /// Handle a single IPC connection from native host
@@ -379,33 +465,14 @@ async fn handle_ipc_connection(stream: tokio::net::UnixStream, app_handle: AppHa
     let response = match serde_json::from_str::<NativeHostRequest>(&line) {
         Ok(req) => {
             if req.action == "add-watcher" {
-                // Save to database
-                match save_project_data(
-                    req.name.clone(),
-                    req.ci_server.clone(),
-                    req.project.clone(),
-                    Some(req.reference.clone()),
-                ) {
-                    Ok(()) => {
-                        info!("Watcher '{}' added via IPC", req.name);
-                        // Emit event to refresh UI
-                        if let Err(e) = app_handle.emit("watcher-added", ()) {
-                            error!("Failed to emit watcher-added event: {}", e);
-                        }
-                        r#"{"success":true}"#.to_string()
-                    }
-                    Err(e) => {
-                        error!("Failed to save watcher: {}", e);
-                        format!(r#"{{"success":false,"error":"{}"}}"#, e)
-                    }
-                }
+                handle_add_watcher(&req, &app_handle)
             } else {
-                format!(r#"{{"success":false,"error":"Unknown action: {}"}}"#, req.action)
+                ipc_error(format!("Unknown action: {}", req.action))
             }
         }
         Err(e) => {
             error!("Failed to parse IPC request: {}", e);
-            format!(r#"{{"success":false,"error":"Invalid JSON: {}"}}"#, e)
+            ipc_error(format!("Invalid JSON: {}", e))
         }
     };
 
