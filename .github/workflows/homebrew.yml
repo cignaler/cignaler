@@ -1,0 +1,66 @@
+name: Update Homebrew cask
+
+# Runs when a release is published (not when the draft is created), so the DMG
+# asset is downloadable and its checksum is final.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish to the tap (e.g. v0.1.0)'
+        required: true
+
+jobs:
+  cask:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version and checksum
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="${TAG#v}"
+          DMG="cignaler_${VERSION}_universal.dmg"
+          URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${DMG}"
+
+          echo "Downloading ${URL}"
+          curl -fsSL --retry 3 -o "$DMG" "$URL"
+          SHA=$(sha256sum "$DMG" | cut -d' ' -f1)
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Render cask
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -e 's/^  version ".*"$/  version "${{ steps.release.outputs.version }}"/' \
+              -e 's/^  sha256 ".*"$/  sha256 "${{ steps.release.outputs.sha256 }}"/' \
+              packaging/homebrew/cignaler.rb > cignaler.rb
+          cat cignaler.rb
+
+      - name: Push to tap
+        shell: bash
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/cignaler/homebrew-tap.git" tap
+          mkdir -p tap/Casks
+          cp cignaler.rb tap/Casks/cignaler.rb
+
+          cd tap
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet; then
+            echo "Cask already up to date"
+            exit 0
+          fi
+          git add Casks/cignaler.rb
+          git commit -m "cignaler ${{ steps.release.outputs.version }}"
+          git push

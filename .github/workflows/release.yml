@@ -13,10 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # One universal DMG — users never have to know which chip they have.
           - platform: macos-latest
-            args: '--target aarch64-apple-darwin'
-          - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
+            args: '--target universal-apple-darwin'
           - platform: ubuntu-22.04
             args: ''
           - platform: windows-latest
@@ -30,7 +29,8 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: latest
+          # Pinned: the allowBuilds key in pnpm-workspace.yaml is pnpm 11 syntax.
+          version: 11
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -51,23 +51,44 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Stage native host binary for cross-compilation targets
-        if: matrix.args != ''
+      - name: Write App Store Connect API key (macOS only)
+        if: startsWith(matrix.platform, 'macos')
         shell: bash
         run: |
-          cargo build --release ${{ matrix.args }} --features skip-tauri-build --bin cignaler-native-host --manifest-path src-tauri/Cargo.toml
-          TARGET=$(echo "${{ matrix.args }}" | sed 's/--target //')
-          mkdir -p src-tauri/binaries
-          cp "target/${TARGET}/release/cignaler-native-host" "src-tauri/binaries/cignaler-native-host-${TARGET}"
+          echo "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" | base64 --decode > "${{ github.workspace }}/apple-api-key.p8"
+          chmod 600 "${{ github.workspace }}/apple-api-key.p8"
 
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Developer ID signing (macOS only; ignored on other platforms)
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          # Notarization via App Store Connect API key
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ github.workspace }}/apple-api-key.p8
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Cignaler ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download and install this version.'
+          releaseBody: |
+            ## Install
+
+            ```
+            brew install --cask cignaler/tap/cignaler
+            ```
+
+            Or download `cignaler_VERSION_universal.dmg` below and drag it to
+            Applications — one download works on both Apple silicon and Intel.
+            The app is signed and notarized, so it opens on first launch.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Remove App Store Connect API key
+        if: always() && startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: rm -f "${{ github.workspace }}/apple-api-key.p8"

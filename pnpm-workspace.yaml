@@ -1,0 +1,4 @@
+allowBuilds:
+  # Links the platform-specific esbuild binary that Vite needs.
+  esbuild: true
+  svelte-preprocess: false

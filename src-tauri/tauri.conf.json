@@ -1,7 +1,7 @@
 {
   "build": {
-    "beforeDevCommand": "cargo build --manifest-path src-tauri/Cargo.toml --features skip-tauri-build --bin cignaler-native-host && node scripts/stage-native-host.mjs debug && npm run dev",
-    "beforeBuildCommand": "cargo build --manifest-path src-tauri/Cargo.toml --release --features skip-tauri-build --bin cignaler-native-host && node scripts/stage-native-host.mjs && npm run build",
+    "beforeDevCommand": "node scripts/stage-native-host.mjs debug && npm run dev",
+    "beforeBuildCommand": "node scripts/stage-native-host.mjs && npm run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
@@ -24,12 +24,13 @@
       "binaries/cignaler-native-host"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "10.15"
     }
   },
   "productName": "cignaler",
   "mainBinaryName": "cignaler",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "identifier": "com.ostwi.dev",
   "plugins": {},
   "app": {

@@ -46,10 +46,28 @@ Cignaler is a free, open-source desktop app that monitors your GitLab CI/CD pipe
 
 ## Getting Started
 
-1. Download the latest release for macOS from the [releases page](https://github.com/ostwi/cignaler/releases).
-2. Open Cignaler — it will appear in your system tray.
-3. Open **Preferences** and add your GitLab server URL and API token.
-4. Create a **watcher** for any project and branch you want to monitor.
+### Install with Homebrew
+
+```bash
+brew install --cask cignaler/tap/cignaler
+```
+
+`brew upgrade` keeps it current from then on.
+
+### Or download the app
+
+Grab `cignaler_<version>_universal.dmg` from the [releases page](https://github.com/cignaler/cignaler/releases)
+and drag Cignaler to your Applications folder. One download covers both Apple
+silicon and Intel Macs.
+
+The app is signed and notarized by Apple, so it opens on first launch — no
+right-click-to-open, no Gatekeeper warning, no `xattr` incantation.
+
+### Then
+
+1. Open Cignaler — it will appear in your system tray.
+2. Open **Preferences** and add your GitLab server URL and API token.
+3. Create a **watcher** for any project and branch you want to monitor.
 
 Cignaler will start polling immediately and update the tray icon as builds succeed, run, or fail.
 
@@ -73,11 +91,11 @@ All data stays on your machine. Cignaler stores configuration and pipeline resul
 
 ```bash
 # Clone the repository
-git clone https://github.com/ostwi/cignaler.git
+git clone https://github.com/cignaler/cignaler.git
 cd cignaler
 
 # Install frontend dependencies
-npm install
+pnpm install
 
 # Start the app in development mode (hot reload)
 npm run tauri -- dev
