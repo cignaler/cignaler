@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A superseded run tells you nothing; don't pay for it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # Pinned: the allowBuilds key in pnpm-workspace.yaml is pnpm 11 syntax.
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Frontend tests
+        run: pnpm run test:run
+
+      - name: Type-check Svelte
+        run: pnpm run check
+
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  # Builds exactly what a release builds, minus signing. The universal path has
+  # its own failure modes — per-arch sidecar staging, lipo — that a plain host
+  # build never exercises, and a release tag is a bad place to discover them.
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: universal
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      # No APPLE_* env here on purpose: this is an unsigned smoke build, so it
+      # works on forks and never touches the notarization service.
+      - name: Build universal app
+        run: pnpm tauri build --target universal-apple-darwin
+
+      - name: Verify both binaries are actually universal
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/cignaler.app
+
+          if [ ! -d "$APP" ]; then
+            echo "::error::No .app at $APP — did Tauri's output layout change?"
+            find src-tauri/target -name '*.app' -maxdepth 6 -print || true
+            exit 1
+          fi
+
+          for bin in cignaler cignaler-native-host; do
+            path="$APP/Contents/MacOS/$bin"
+            [ -f "$path" ] || { echo "missing $path"; exit 1; }
+
+            archs=$(lipo -archs "$path")
+            echo "$bin: $archs"
+            for arch in x86_64 arm64; do
+              case " $archs " in
+                *" $arch "*) ;;
+                *) echo "::error::$bin is missing the $arch slice (got: $archs)"; exit 1;;
+              esac
+            done
+          done
+
+          echo "Both binaries carry x86_64 and arm64."
