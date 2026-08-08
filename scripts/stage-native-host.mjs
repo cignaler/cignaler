@@ -85,15 +85,30 @@ function build(triple) {
 
 mkdirSync(destDir, { recursive: true });
 
+const staged = [];
+
 if (target === UNIVERSAL) {
-    const slices = UNIVERSAL_SLICES.map(build);
+    // A universal build needs all three sidecars on disk. Tauri compiles each
+    // arch separately before lipo-ing the main binary, and tauri-build asserts
+    // a sidecar exists for *that slice's* triple; the bundler then picks the
+    // universal one to copy into the .app.
+    const slices = UNIVERSAL_SLICES.map((triple) => {
+        const built = build(triple);
+        const slicePath = join(destDir, `cignaler-native-host-${triple}`);
+        copyFileSync(built, slicePath);
+        staged.push(slicePath);
+        return built;
+    });
     execFileSync('lipo', ['-create', '-output', destPath, ...slices], { stdio: 'inherit' });
 } else {
     copyFileSync(build(target), destPath);
 }
 
+staged.push(destPath);
+
 if (process.platform !== 'win32') {
-    chmodSync(destPath, 0o755);
+    for (const path of staged) chmodSync(path, 0o755);
 }
 
-console.log(`Staged native host (${target}): ${destPath}`);
+console.log(`Staged native host (${target}):`);
+for (const path of staged) console.log(`  ${path}`);
