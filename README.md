@@ -98,20 +98,25 @@ cd cignaler
 pnpm install
 
 # Start the app in development mode (hot reload)
-npm run tauri -- dev
+pnpm tauri dev
 ```
 
 ### Other Commands
 
 ```bash
 # Run frontend tests
-npm run test:run
+pnpm run test:run
 
 # Type-check Svelte components
-npm run check
+pnpm run check
 
 # Build a production binary
-npm run tauri -- build
+pnpm tauri build
+
+# Run Rust tests. The sidecar has to exist first — tauri_build::build() fails
+# without it, and `tauri dev`/`tauri build` normally stage it for you.
+node scripts/stage-native-host.mjs debug
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 The development server runs on `http://localhost:1420`. The Tauri window connects to it automatically in dev mode.

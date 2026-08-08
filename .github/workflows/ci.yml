@@ -49,6 +49,12 @@ jobs:
       - name: Type-check Svelte
         run: pnpm run check
 
+      # tauri_build::build() fails if the externalBin sidecar is absent, and it
+      # is a build artifact rather than a checked-in file. Debug profile so it
+      # shares a target dir with the tests below.
+      - name: Stage native host sidecar
+        run: node scripts/stage-native-host.mjs debug
+
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
