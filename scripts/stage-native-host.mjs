@@ -88,10 +88,14 @@ mkdirSync(destDir, { recursive: true });
 const staged = [];
 
 if (target === UNIVERSAL) {
-    // A universal build needs all three sidecars on disk. Tauri compiles each
-    // arch separately before lipo-ing the main binary, and tauri-build asserts
-    // a sidecar exists for *that slice's* triple; the bundler then picks the
-    // universal one to copy into the .app.
+    // A universal build needs the sidecar in three places, because two
+    // different parts of Tauri look for it under two different conventions:
+    //
+    //  - tauri-build runs once per arch slice and asserts
+    //    binaries/<name>-<slice-triple> exists.
+    //  - the bundler reads <out-dir>/<name>, triple stripped. tauri-build
+    //    populates that for each slice, but nothing populates it for the
+    //    universal target — Tauri's lipo step covers only the main binary.
     const slices = UNIVERSAL_SLICES.map((triple) => {
         const built = build(triple);
         const slicePath = join(destDir, `cignaler-native-host-${triple}`);
@@ -100,6 +104,12 @@ if (target === UNIVERSAL) {
         return built;
     });
     execFileSync('lipo', ['-create', '-output', destPath, ...slices], { stdio: 'inherit' });
+
+    const universalOutDir = join(root, 'src-tauri', 'target', UNIVERSAL, profile);
+    mkdirSync(universalOutDir, { recursive: true });
+    const bundlerPath = join(universalOutDir, binaryName);
+    copyFileSync(destPath, bundlerPath);
+    staged.push(bundlerPath);
 } else {
     copyFileSync(build(target), destPath);
 }
