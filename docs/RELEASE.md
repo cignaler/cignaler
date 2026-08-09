@@ -19,6 +19,17 @@ Steps 1 and 3 need one-time credential setup before they do anything.
    `Developer ID Application: JAKUB OSTWALD (JLMPGSCFHU)`, right-click →
    Export → `.p12`, set a password.
 
+   Select the certificate **and its private key** — an export of the
+   certificate alone cannot sign, and fails in CI with a bare
+   `SecKeychainItemImport: One or more parameters ... were not valid`.
+
+   Check it before you set the secret. This reproduces Tauri's import exactly,
+   so a bad `.p12` fails in seconds instead of eleven minutes into a release:
+
+   ```sh
+   scripts/verify-signing-cert.sh DeveloperID.p12
+   ```
+
    ```sh
    base64 -i DeveloperID.p12 | pbcopy
    ```
