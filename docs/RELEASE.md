@@ -13,6 +13,11 @@ Steps 1 and 3 need one-time credential setup before they do anything.
 
 ## 1. Signing & notarization
 
+**Setting this up for the first time? Follow
+[SIGNING-SETUP.md](SIGNING-SETUP.md)** — it walks through the Keychain export,
+the App Store Connect key, and all seven secrets click by click. The summary
+below is for reference once you know the shape of it.
+
 ### One-time setup
 
 1. **Export the certificate.** In Keychain Access, find
