@@ -142,20 +142,36 @@ The main `homebrew-cask` repo enforces notability thresholds (roughly 75 stars /
 30 forks / 30 watchers) that a new project will not meet. A tap costs users one
 extra path segment and nothing else. Revisit later if the project takes off.
 
-## Release checklist
+## Cutting a release
 
-1. Bump the version in `package.json`, `src-tauri/Cargo.toml`, and
-   `src-tauri/tauri.conf.json`.
-2. Tag and push: `git tag v0.1.0 && git push --tags`.
-3. `release.yml` builds macOS (universal) and Linux, and opens a **draft**
-   release.
-4. Check the draft's artifacts, write release notes, publish.
-5. Publishing fires `homebrew.yml`, which updates the tap.
+```sh
+scripts/release.sh 0.0.4
+```
 
-Step 4 is manual and easy to forget — a draft is invisible on the releases
+That bumps the version in the three files that have to agree — `package.json`,
+`src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` — plus the derived
+`Cargo.lock`, runs the frontend and Rust test suites, commits, tags, pushes,
+and watches the release run. It refuses up front on the things that otherwise
+waste a tag: a dirty tree, a branch that is not `main`, a tag that already
+exists, or a missing Apple secret.
+
+It stops at the **draft**. Look at the artifacts, then:
+
+```sh
+gh release edit v0.0.4 --draft=false
+```
+
+Or pass `--publish` to have the script do it once the run is green, and
+`--dry-run` to bump and test without committing anything.
+
+Publishing is what fires `homebrew.yml`, which updates the tap.
+
+That last manual step is easy to forget — a draft is invisible on the releases
 page, so to everyone else the version simply does not exist. v0.0.3 sat that
-way for a month. If a version is missing publicly, check
-`gh release list` for a `Draft` row before looking anywhere else.
+way for a month because the run showed a red X from the Windows leg and nobody
+went looking for a publish button behind a failed build. If a version is
+missing publicly, check `gh release list` for a `Draft` row before looking
+anywhere else.
 
 ## No Windows builds
 
