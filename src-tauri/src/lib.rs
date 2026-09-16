@@ -1,3 +1,4 @@
+pub mod app_path;
 pub mod database;
 pub mod error;
 pub mod gitlab_client;

@@ -560,9 +560,11 @@ name = "cignaler"
 version = "0.0.3"
 dependencies = [
  "chrono",
+ "core-foundation 0.10.1",
  "dirs",
  "gitlab",
  "keyring",
+ "libc",
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",

@@ -175,7 +175,7 @@ named-pipe path.
 Worth recording so it does not get re-litigated: the store requires App Sandbox,
 and a sandboxed build cannot write the Chrome native messaging manifest to
 `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/`
-(`src-tauri/src/main.rs:302` — under sandbox `dirs::data_dir()` resolves inside
+(`src-tauri/src/main.rs:322` — under sandbox `dirs::data_dir()` resolves inside
 the app container instead). No entitlement grants that access, so the browser
 extension would silently stop working. Tauri also has no Mac App Store bundle
 target, so packaging would be hand-rolled. Developer ID + Homebrew covers the

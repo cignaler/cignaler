@@ -10,6 +10,7 @@ use cignaler::gitlab_client::gitlab_client::{
     get_gitlab_pipelines, get_references, validate_server_url, PipelineData,
 };
 use cignaler::pipeline_cache::{poll_single_watcher, set_tray_icon, start_background_poller, update_tray_from_all_cached};
+use cignaler::app_path;
 use cignaler::CiProject;
 use serde::Serialize;
 use tauri::{
@@ -19,7 +20,7 @@ use tauri::{
 };
 use serde::Deserialize;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixListener;
 use tracing::{debug, error, info, warn};
@@ -266,13 +267,32 @@ fn trigger_poll(app: AppHandle, watcher_id: i64) -> Result<(), String> {
 const CHROME_EXTENSION_ID: &str = "cfggfimeknbkdnknnfhbfggdpkbilied";
 
 fn register_native_messaging_host() {
-    let host_binary = match std::env::current_exe() {
-        Ok(exe) => exe.parent().unwrap_or(&PathBuf::from(".")).join("cignaler-native-host"),
-        Err(e) => {
-            warn!("Could not resolve current executable path: {}", e);
+    // The manifest persists an absolute path that Chrome reads long after this
+    // process is gone, so it has to be a path that still exists then. Under
+    // App Translocation current_exe() reports a read-only image under
+    // /private/var/.../AppTranslocation/<uuid>/d/ that is unmounted on quit;
+    // writing that here is what silently broke the extension after a DMG
+    // install. Bail out rather than overwrite a good manifest with a dead one.
+    let exe = match app_path::durable_current_exe() {
+        Ok(exe) => exe,
+        Err(None) => {
+            warn!("Could not resolve current executable path");
+            return;
+        }
+        Err(Some(reason)) => {
+            warn!(
+                "Not registering the Chrome native messaging host: {}. \
+                 A manifest from an earlier launch is left untouched.",
+                reason
+            );
             return;
         }
     };
+
+    let host_binary = exe
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join("cignaler-native-host");
 
     if !host_binary.exists() {
         warn!(
