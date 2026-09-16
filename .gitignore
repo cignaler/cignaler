@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Apple App Store Connect API key metadata (issuer + key id) - never commit
+p8_data.txt
+*.p8
+*.p12

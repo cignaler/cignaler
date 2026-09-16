@@ -113,6 +113,12 @@ pnpm tauri build --target universal-apple-darwin
 
 ## 3. Homebrew tap
 
+> **Status: not set up yet.** Neither the `cignaler/homebrew-tap` repo nor the
+> `HOMEBREW_TAP_TOKEN` secret exists, so `homebrew.yml` fails on every
+> published release. The `brew install` line is deliberately absent from
+> `release.yml`'s release notes until the two steps below are done — put it
+> back in the same commit that adds the secret.
+
 ### One-time setup
 
 1. **Create the tap repo**: a public GitHub repo named `homebrew-tap` under the
@@ -141,9 +147,28 @@ extra path segment and nothing else. Revisit later if the project takes off.
 1. Bump the version in `package.json`, `src-tauri/Cargo.toml`, and
    `src-tauri/tauri.conf.json`.
 2. Tag and push: `git tag v0.1.0 && git push --tags`.
-3. `release.yml` builds all platforms and opens a **draft** release.
+3. `release.yml` builds macOS (universal) and Linux, and opens a **draft**
+   release.
 4. Check the draft's artifacts, write release notes, publish.
 5. Publishing fires `homebrew.yml`, which updates the tap.
+
+Step 4 is manual and easy to forget — a draft is invisible on the releases
+page, so to everyone else the version simply does not exist. v0.0.3 sat that
+way for a month. If a version is missing publicly, check
+`gh release list` for a `Draft` row before looking anywhere else.
+
+## No Windows builds
+
+The app and its Chrome native-messaging host communicate over a Unix domain
+socket — `tokio::net::UnixListener` in `src-tauri/src/main.rs`,
+`std::os::unix::net::UnixStream` in `src-tauri/src/bin/native_host.rs`. Neither
+is gated behind `cfg(unix)`, so both binaries fail to compile for
+windows-msvc (`error[E0433]: could not find 'unix' in 'os'`).
+
+`release.yml` used to include `windows-latest` anyway. With `fail-fast: false`
+the macOS and Linux artifacts still uploaded, so the only effect was a red X on
+every release run. Windows is out of the matrix until the IPC layer grows a
+named-pipe path.
 
 ## Not on the Mac App Store
 
