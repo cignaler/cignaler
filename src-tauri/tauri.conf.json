@@ -1,7 +1,7 @@
 {
   "build": {
-    "beforeDevCommand": "node scripts/stage-native-host.mjs debug && npm run dev",
-    "beforeBuildCommand": "node scripts/stage-native-host.mjs && npm run build",
+    "beforeDevCommand": "node scripts/stage-native-host.mjs debug && pnpm run dev",
+    "beforeBuildCommand": "node scripts/stage-native-host.mjs && pnpm run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },

@@ -2,3 +2,9 @@ allowBuilds:
   # Links the platform-specific esbuild binary that Vite needs.
   esbuild: true
   svelte-preprocess: false
+
+overrides:
+  # CVE-2026-33532. Nothing declares a range that excludes the fix -- vite asks
+  # for ^2.4.2 -- but pnpm will not re-resolve a transitive pin on its own, so
+  # say it here. Drop this once the dependents ship lockfiles past 2.8.3.
+  yaml: '>=2.8.3'

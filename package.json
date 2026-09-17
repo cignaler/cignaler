@@ -17,7 +17,7 @@
     "@fontsource-variable/outfit": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-shell": "^2.3.5",
+    "@tauri-apps/plugin-shell": "^2.3.6",
     "classnames": "^2.5.1"
   },
   "devDependencies": {
@@ -26,21 +26,21 @@
     "@tailwindcss/vite": "^4.1.17",
     "@tauri-apps/cli": "^2.11.4",
     "@tsconfig/svelte": "^5.0.8",
-    "@types/node": "^24.13.3",
-    "autoprefixer": "^10.5.4",
+    "@types/node": "^24.13.5",
+    "autoprefixer": "^10.6.1",
     "jsdom": "^24.1.3",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.7",
     "prettier-plugin-svelte": "^3.5.2",
     "prettier-plugin-tailwindcss": "^0.7.4",
-    "publint": "^0.3.22",
-    "svelte": "5.53.11",
-    "svelte-check": "^4.7.4",
+    "publint": "^0.3.24",
+    "svelte": "5.57.0",
+    "svelte-check": "^4.7.6",
     "svelte-heros-v2": "^3.0.1",
     "svelte-preprocess": "^6.0.5",
     "tailwindcss": "^4.3.3",
     "tslib": "^2.8.1",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
-    "vitest": "^2.1.9"
+    "vitest": "^4.1.11"
   }
 }
