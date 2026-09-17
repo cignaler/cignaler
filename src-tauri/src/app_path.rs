@@ -109,9 +109,10 @@ fn looks_translocated(path: &Path) -> bool {
 #[cfg(target_os = "macos")]
 fn untranslocated(path: &Path) -> Result<PathBuf, NotDurable> {
     // Either signal is enough to start looking for the original. The marker is
-    // checked first and on its own because SecTranslocateIsTranslocatedURL has
-    // been observed answering "no" for a process asking about its own
-    // translocated path -- see sec_translocate_original below.
+    // checked on its own rather than trusting SecTranslocateIsTranslocatedURL
+    // alone: a "no" from the framework would skip resolution entirely and
+    // leave only the read-only-mount check to catch it, which reports the
+    // wrong cause.
     if !looks_translocated(path) && !sec_is_translocated(path).unwrap_or(false) {
         return Ok(path.to_path_buf());
     }
@@ -172,9 +173,12 @@ fn sec_is_translocated(path: &Path) -> Option<bool> {
 
 /// Ask the Security framework for the original location.
 ///
-/// This is the right call and it works when one process asks about another's
-/// translocated path. It did not answer when the translocated process asked
-/// about itself, which is exactly our case -- hence mount_source_original.
+/// The documented call, and verified to resolve a live translocated path when
+/// asked from another process. What it does when the translocated process asks
+/// about *itself* is untested here: reproducing that needs a first launch of a
+/// quarantined app, which macOS holds at _dyld_start behind a consent dialog
+/// until someone clicks Open. mount_source_original covers that case if this
+/// one turns out not to.
 #[cfg(target_os = "macos")]
 fn sec_translocate_original(path: &Path) -> Option<PathBuf> {
     use core_foundation::base::TCFType;
